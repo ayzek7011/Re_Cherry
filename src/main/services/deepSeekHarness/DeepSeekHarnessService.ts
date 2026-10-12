@@ -43,6 +43,7 @@ import {
   rollbackDeepSeekHarnessConfig,
   writeDeepSeekHarnessConfig
 } from './config'
+import { managedToolBinDirs } from '@main/services/binaryManager/layout'
 import { startGatewayForCodeMate } from './gatewayRuntime'
 import { cacheRoot, codeMateToolsRoot, deepSeekHarnessHome, deepSeekHarnessWorkspace, nodeRuntimeDir } from './paths'
 
@@ -315,9 +316,10 @@ class DeepSeekHarnessService {
     if (!binary) throw new Error('DeepSeek Harness is not installed')
     // 真机加固：PATH 命中 ≠ 可用——`--version` 探针失败的系统件（旧版缺 web 子命令、
     // 损坏安装、同名异物）在启动前显式拒绝，不再放行到子进程退出后的英文哑弹。
+    // 原因照实带上（探针此前把退出码/stderr 全丢了，用户只看到"可能损坏或过时"这句猜测）。
     if (!binary.runnable) {
       throw new Error(
-        `Found DeepSeek Harness at ${binary.path} but it failed to run (--version). It may be a broken or outdated installation — install the managed version from the CodeMate panel.`
+        `Found DeepSeek Harness at ${binary.path} but it failed to run (--version).${binary.probeDetail ? ` Reason: ${binary.probeDetail}.` : ''} It may be a broken or outdated installation — install the managed version from the CodeMate panel.`
       )
     }
     const env = binary.source === 'system' ? await getRawShellEnv() : await refreshShellEnv()
@@ -407,7 +409,6 @@ class DeepSeekHarnessService {
     // env.PATH 是 undefined——上一版直接拼 env.PATH 把整个系统 PATH 截没了，真机
     // 症状：'"node" 不是内部或外部命令'）。
     const pathSep = isWin ? ';' : ':'
-    const toolsBinDir = path.join(codeMateToolsRoot(), 'dsh', 'node_modules', '.bin')
     const nodeBinDir = isWin ? nodeRuntimeDir(NODE_VERSION) : path.join(nodeRuntimeDir(NODE_VERSION), 'bin')
     const childEnv = stripManagedCredentialEnv(
       withPathPrepend(
@@ -416,7 +417,7 @@ class DeepSeekHarnessService {
           DSH_HOME: deepSeekHarnessHome(),
           DSH_PERMISSION_MODE: permissionMode
         },
-        [nodeBinDir, toolsBinDir],
+        [nodeBinDir, ...managedToolBinDirs()],
         pathSep
       )
     )

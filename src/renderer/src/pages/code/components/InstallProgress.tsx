@@ -35,7 +35,8 @@ const STEP_LABEL_KEYS: Record<InstallProgressStep, string> = {
   deps: 'code.install_progress.deps',
   front: 'code.install_progress.front',
   build: 'code.install_progress.build',
-  deploy: 'code.install_progress.deploy'
+  deploy: 'code.install_progress.deploy',
+  launch: 'code.install_progress.launch'
 }
 
 /** 确定性比例换算成百分比：下限 2%（可见）、上限 100%（防浮点越界）。 */

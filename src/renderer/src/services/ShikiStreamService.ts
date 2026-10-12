@@ -211,9 +211,10 @@ class ShikiStreamService {
    * worker 不再 `import('shiki')`（那会让它的独立模块图再编译一份 286 个语言 chunk 的语言表，
    * 产物重复 4.15 MB），改为向主线程索取语法/主题注册数据——这些数据是 JSON，可结构化克隆。
    *
-   * 失败语义：解析失败回包 `error` ⇒ worker 侧 `requestAsset`
-   * reject ⇒ `ensureLanguageAndThemeLoaded` 走既有回退（语言退 `text`、主题退 `one-light`），
-   * 而不是让 tokenizer 拿着空语法静默出错。
+   * 失败语义：解析失败回包 `error` ⇒ worker 侧 `requestAsset` reject ⇒ **原样上抛**（服务层
+   * `highlightCodeChunk` 记 5 分钟降级并回落主线程，见 worker 侧 `highlightCodeChunk` 注释）；
+   * 只有"语言解析成功但结果为空"（未知语言）才由 worker 退 `text`，主题解析失败仍回退
+   * `one-light`（与主线程 `loadThemeIfNeeded` 同语义）。
    *
    * 注意：本方法**不**占用 `pendingRequests`、也不 `cancelWorkerIdleTerminate()`——这不是一次
    * worker 计算请求，而是一次本地解析 + 回包。回包在途期间若恰好发生空闲回收，worker 已被

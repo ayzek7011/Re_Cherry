@@ -15,7 +15,12 @@ export class MockRendererLoggerService {
     MockRendererLoggerService.instance = new MockRendererLoggerService()
   }
 
-  public initWindowSource(): void {}
+  // 与真实 LoggerService.initWindowSource（返回 LoggerService 实例，支持链式 `.withContext`）同契约。
+  // 返回 void 会让 `initWindowSource('W').withContext(...)` 的模块顶层链式调用在测试里炸掉
+  // （shiki-stream.worker.ts 即此写法）。
+  public initWindowSource(): MockRendererLoggerService {
+    return this
+  }
   public withContext(): MockRendererLoggerService {
     return this
   }

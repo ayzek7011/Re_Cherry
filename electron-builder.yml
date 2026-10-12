@@ -138,6 +138,57 @@ artifactBuildCompleted: scripts/artifact-build-completed.js
 releaseInfo:
   releaseNotes: |
     <!--LANG:en-->
+    Re_Cherry 1.0.1 - Code highlighting and tool installation fixes
+
+    This round closes two clusters of user-reported defects: streaming code blocks that rendered
+    duplicated or lost their colors, and Code CLI tools that reported "broken or outdated
+    installation" although they had just installed.
+
+    🎨 Code highlighting
+    - A code block no longer renders twice without colors when the highlight worker fails on a
+      language: the worker reports the failure and the main thread takes over with the full
+      grammar engine.
+    - A failed incremental highlight no longer wipes the already-highlighted state (which could
+      leave a block permanently monochrome when the stream had just ended). The hook follows the
+      upstream v2 implementation: keep the last good state, let the error propagate, retry on the
+      next delta.
+    - `highlightCode` passes the actually loaded language and theme to Shiki, so a degraded
+      language no longer throws inside `codeToHtml`.
+    - Markdown fences with unknown languages render as plain text instead of being mis-colored by
+      the JSON grammar.
+
+    🛠️ Code CLI tools
+    - The install pipeline verifies that the freshly written binary actually launches (probe
+      capped at 90 s), and the progress UI shows the new launch step.
+    - When a probe or a launch fails, the error carries the concrete diagnostics instead of a
+      generic "broken or outdated installation".
+    - Fixed npm bin resolution on Windows: the real JS entry behind `.cmd` shims is resolved
+      before probing, and the managed Node directories are prepended to PATH with a cache
+      invalidation after an install, so a freshly installed tool is found immediately.
+
+    <!--LANG:zh-CN-->
+    Re_Cherry 1.0.1 —— 代码高亮与工具安装修复
+
+    本轮收掉两批用户上报的缺陷：流式代码块渲染成两份或丢光颜色；代码助手工具刚装完却报
+    "broken or outdated installation"。
+
+    🎨 代码高亮
+    - 高亮 worker 对某语言失败时，代码块不再渲染成两份无色文本：worker 如实上抛，主线程用
+      完整语法引擎接管。
+    - 增量高亮失败不再清空已高亮的状态（此前若失败恰逢流结束，整块会永久单色）。hook 采用
+      上游 v2 实现：保留最后一次的正确结果、错误上抛、下一次增量自然重试。
+    - `highlightCode` 把实际加载成功的语言与主题传给 Shiki，语言降级后不再在 `codeToHtml`
+      内抛错。
+    - 未知语言的围栏按纯文本渲染，不再被 JSON 语法错误上色。
+
+    🛠️ 代码助手工具
+    - 安装管线在写入后验证可执行文件真的能启动（探测上限 90 秒），进度界面新增启动步骤。
+    - 探测或启动失败时，错误信息带上具体诊断，不再只报笼统的 "broken or outdated
+      installation"。
+    - 修复 Windows 上的 npm bin 解析：先解析 `.cmd` shim 背后的真实 JS 入口再探测；安装后把
+      受管 Node 目录前置进 PATH 并失效缓存，新装工具立即可用。
+
+    <!--LANG:en-->
     Re_Cherry 1.0.0 - the first release
 
     Re_Cherry 1.0.0 finishes what the plan asked for: the internal documents, the cleanup of the

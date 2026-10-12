@@ -152,37 +152,49 @@ async function ensureLanguageAndThemeLoaded(
   let actualTheme = theme
 
   // 加载语言
+  //
+  // 失败语义与主线程 `utils/shiki.ts` 的 `loadLanguageIfNeeded` 分层对齐：
+  //  · 围栏信息串不是任何已知语言（资产解析成功但为空）⇒ 退回 `text` 纯文本（主线程同此行为，
+  //    内容渲染仍正确，只是无色）；
+  //  · 语言已知但 `loadLanguage` 抛错 ⇒ **原样上抛，绝不退 `text`**。典型成因：本 worker 用
+  //    `createJavaScriptRegexEngine()`（非 forgiving），该语法的 Oniguruma 特性译不成 JS 正则，
+  //    编译在首次 tokenize 时才发生并从 `enqueue` 冒出。吞掉会让本可高亮（主线程 wasm 引擎）
+  //    的块变成纯文本；上抛后服务层记 5 分钟降级并整体回落主线程，拿到真正的高亮。
+  //    （旧实现把两类失败一起吞成 `text`，是"某些语言不高亮且渲染两份"缺陷的一半。）
   if (!highlighter.getLoadedLanguages().includes(language)) {
-    try {
-      if (['text', 'ansi'].includes(language)) {
-        await highlighter.loadLanguage(language as SpecialLanguage)
+    if (['text', 'ansi'].includes(language)) {
+      await highlighter.loadLanguage(language as SpecialLanguage)
+    } else {
+      const registrations = await requestAsset('language', language)
+      if (registrations.length === 0) {
+        await highlighter.loadLanguage('text')
+        actualLanguage = 'text'
       } else {
-        const registrations = await requestAsset('language', language)
-        if (registrations.length === 0) {
-          throw new Error(`Unknown language: ${language}`)
-        }
         await highlighter.loadLanguage(registrations as unknown as LanguageRegistration[])
       }
-    } catch (error) {
-      // 回退到 text
-      await highlighter.loadLanguage('text')
-      actualLanguage = 'text'
     }
   }
 
   // 加载主题
+  //
+  // 注意 `loadTheme` 与 `loadLanguage` 的 API **不对称**：语言接受 `LanguageRegistration[]`，
+  // 主题只接受**单个** ThemeInput。把数组整个传进去会被 shiki 的 `normalizeTheme`
+  // （`{ ...rawTheme }`）展开成 `{ 0: themeJson }`，`name` 丢失 ⇒ **静默不注册、不报错**，
+  // 直到首次 tokenize 才抛 `Theme '…' not found`（旧实现把它吞成假成功，是"一式两份"的
+  // 另一半成因）。所以这里必须取 `registrations[0]`（`resolveThemeRegistrations` 已把
+  // 模块命名空间归一成 `[themeJson]`，且补齐了 `name`）。
   if (!highlighter.getLoadedThemes().includes(theme)) {
     try {
       const registrations = await requestAsset('theme', theme)
       if (registrations.length === 0) {
         throw new Error(`Unknown theme: ${theme}`)
       }
-      await highlighter.loadTheme(registrations as unknown as Parameters<HighlighterCore['loadTheme']>[0])
+      await highlighter.loadTheme(registrations[0] as unknown as Parameters<HighlighterCore['loadTheme']>[0])
     } catch (error) {
       // 回退到 one-light
       logger.debug(`Worker: Failed to load theme '${theme}', falling back to 'one-light':`, error as Error)
       const fallback = await requestAsset('theme', 'one-light')
-      await highlighter.loadTheme(fallback as unknown as Parameters<HighlighterCore['loadTheme']>[0])
+      await highlighter.loadTheme(fallback[0] as unknown as Parameters<HighlighterCore['loadTheme']>[0])
       actualTheme = 'one-light'
     }
   }
@@ -221,33 +233,30 @@ async function getStreamTokenizer(callerId: string, language: string, theme: str
 }
 
 // 高亮代码 chunk
-async function highlightCodeChunk(
+//
+// **不**捕获异常：任何失败（语法/主题加载失败、js 引擎译不出某语法的 Oniguruma 特性、
+// tokenizer 异常——含主题数组误传导致的静默不注册，见 `ensureLanguageAndThemeLoaded` 主题段
+// 注释）都原样上抛，由 `self.onmessage` 的外层 catch 回 `type:'error'` ⇒ 服务层把该 callerId
+// 记 5 分钟降级并整体回落主线程（主图 `import('shiki')` 是 Oniguruma wasm 引擎，能正常处理
+// 这类语法）。旧实现在这里伪造 `{ lines: [[整段 chunk]], recall: 0 }` 的"成功"结果——调用方
+// （useCodeHighlight）既不撤回已渲染的 unstable 行、又把这行当高亮追加，VirtualizedRow 第一行
+// 渲染整段原文（`white-space: pre` 保留换行）＋其后各行再渲染一遍 ⇒ 整块代码一式两份且无高亮。
+// 与主线程 `highlightWithMainThread` 已修掉的同一缺陷同源（见 ShikiStreamService.ts 同名注释）。
+export async function highlightCodeChunk(
   callerId: string,
   chunk: string,
   language: string,
   theme: string
 ): Promise<HighlightChunkResult> {
-  try {
-    // 获取 tokenizer
-    const tokenizer = await getStreamTokenizer(callerId, language, theme)
+  const tokenizer = await getStreamTokenizer(callerId, language, theme)
 
-    // 处理代码 chunk
-    const result = await tokenizer.enqueue(chunk)
+  // 处理代码 chunk
+  const result = await tokenizer.enqueue(chunk)
 
-    // 返回结果
-    return {
-      lines: [...result.stable, ...result.unstable],
-      recall: result.recall
-    }
-  } catch (error) {
-    logger.error('Worker failed to highlight code chunk:', error as Error)
-
-    // 提供简单的 fallback
-    const fallbackToken: ThemedToken = { content: chunk || '', color: '#000000', offset: 0 }
-    return {
-      lines: [[fallbackToken]],
-      recall: 0
-    }
+  // 返回结果
+  return {
+    lines: [...result.stable, ...result.unstable],
+    recall: result.recall
   }
 }
 

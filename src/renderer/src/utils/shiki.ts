@@ -196,6 +196,27 @@ export async function loadThemeIfNeeded(highlighter: HighlighterGeneric<any, any
 }
 
 /**
+ * 并行加载语言与主题，返回两者**实际加载成功**的 id。
+ *
+ * 直接消费 `codeToHtml` 的路径（如 CodeStyleProvider 的 `highlightCode`）必须把这里的
+ * loaded id 传回 shiki，而不是原始入参：`loadLanguageIfNeeded` 对未知语言会静默降级到
+ * `text`、`loadThemeIfNeeded` 对加载失败的主题会静默降级到 `one-light`，若仍把原始
+ * language/theme 传给 `codeToHtml`，会因「该语言/主题未加载」直接 throw（上游已修、
+ * 本仓曾遗漏的缺陷）。
+ */
+export async function loadLanguageAndThemeIfNeeded(
+  highlighter: HighlighterGeneric<BundledLanguage, BundledTheme>,
+  language: string,
+  theme: string
+): Promise<{ loadedLanguage: string; loadedTheme: string }> {
+  const [loadedLanguage, loadedTheme] = await Promise.all([
+    loadLanguageIfNeeded(highlighter, language),
+    loadThemeIfNeeded(highlighter, theme)
+  ])
+  return { loadedLanguage, loadedTheme }
+}
+
+/**
  * Shiki token 样式转换为 React 样式对象
  *
  * @param token Shiki themed token
@@ -265,8 +286,10 @@ const mdInitializer = new AsyncInitializer(async () => {
     fromHighlighter(highlighter, {
       themes: markdownItOptions.themes,
       defaultColor: markdownItOptions.defaultColor,
-      defaultLanguage: 'json',
-      fallbackLanguage: 'json'
+      // 未知/未加载语言的围栏按纯文本渲染（与 CodeViewer 的 text 降级一致）。此前用
+      // 'json'：未知名语言会被 json 语法错误上色（键/字符串的高亮），比单色更误导。
+      // 'text' 在 DEFAULT_LANGUAGES 里预装，fallback 不会 throw（上游同款语义）。
+      fallbackLanguage: 'text' as BundledLanguage
     })
   )
 

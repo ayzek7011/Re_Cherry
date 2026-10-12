@@ -2,7 +2,7 @@ import { splitToSubTrunks } from '@renderer/services/ShikiStreamTokenizer'
 import type { ThemedToken } from 'shiki/types'
 import { describe, expect, it } from 'vitest'
 
-import { getReactStyleFromToken } from '../shiki'
+import { getReactStyleFromToken, loadLanguageAndThemeIfNeeded } from '../shiki'
 
 // FontStyle 常量，避免类型错误
 const FS_ITALIC = 1
@@ -218,5 +218,56 @@ describe('shiki', () => {
 
       expect(result.color).toBe('white')
     })
+  })
+})
+
+describe('loadLanguageAndThemeIfNeeded', () => {
+  // 最小 highlighter 桩：只记录 loadLanguage/loadTheme 收到的原始入参。
+  // 语言/主题解析走真实 shiki 的 bundledLanguages/bundledThemes 动态导入。
+  function createHighlighterStub() {
+    const loadLanguageInputs: unknown[] = []
+    const loadThemeInputs: unknown[] = []
+    return {
+      getLoadedLanguages: () => [] as string[],
+      getLoadedThemes: () => [] as string[],
+      async loadLanguage(input: unknown) {
+        loadLanguageInputs.push(input)
+      },
+      async loadTheme(input: unknown) {
+        loadThemeInputs.push(input)
+      },
+      loadLanguageInputs,
+      loadThemeInputs
+    }
+  }
+
+  type ComboHighlighter = Parameters<typeof loadLanguageAndThemeIfNeeded>[0]
+
+  it('returns the actually loaded language and theme ids for known inputs', async () => {
+    const stub = createHighlighterStub()
+    const result = await loadLanguageAndThemeIfNeeded(stub as unknown as ComboHighlighter, 'go', 'one-light')
+
+    expect(result).toEqual({ loadedLanguage: 'go', loadedTheme: 'one-light' })
+    expect(stub.loadLanguageInputs).toHaveLength(1)
+    expect(stub.loadThemeInputs).toHaveLength(1)
+  })
+
+  it('degrades an unknown language to text while keeping the loaded theme', async () => {
+    const stub = createHighlighterStub()
+    const result = await loadLanguageAndThemeIfNeeded(stub as unknown as ComboHighlighter, 'golang', 'one-light')
+
+    // 未知语言经 loadLanguageIfNeeded 静默降级为 text；combo 返回值必须暴露降级后的
+    // 实际 id（消费方 codeToHtml 只能用它，传原始入参会 throw）。
+    expect(result.loadedLanguage).toBe('text')
+    expect(result.loadedTheme).toBe('one-light')
+    expect(stub.loadLanguageInputs).toContain('text')
+  })
+
+  it('falls back to one-light when the requested theme fails to load', async () => {
+    const stub = createHighlighterStub()
+    const result = await loadLanguageAndThemeIfNeeded(stub as unknown as ComboHighlighter, 'go', 'no-such-theme')
+
+    expect(result.loadedLanguage).toBe('go')
+    expect(result.loadedTheme).toBe('one-light')
   })
 })

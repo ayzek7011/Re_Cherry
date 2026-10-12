@@ -1,16 +1,19 @@
 import { loggerService } from '@logger'
 // fork 缝：V2 平台常量位于 @main/core/platform，fork 等价物为 @main/constant。
 import { isMac, isWin } from '@main/constant'
+import { managedNodeRuntimeRoot, managedToolBinDirs } from '@main/services/binaryManager/layout'
 import { spawn } from 'child_process'
 // fork 缝：V2 的 @application 路径系统未移植；'sys.home' 在 V2 即 os.homedir()
 // （见 V2 src/main/core/paths/pathRegistry.ts）。dedupePathSegments 缝实现也需要 path。
+import fsp from 'fs/promises'
 import os from 'os'
 import path from 'path'
 
 // fork 缝：V2 的 ./binaryEnv（mise 受管二进制环境）与 ./bundledGit（内置 MinGit）未随 fork
 // 移植，按其在 shellEnv.ts 的消费面内联最小等价实现：dedupePathSegments 为 V2
-// binaryEnv.ts 原文逐字；fork 无受管工具目录、无 mise、无内置 git，故
-// getBinarySearchDirs / mergeBinaryExecutionEnv / getBundledGitDir 为空实现。
+// binaryEnv.ts 原文逐字；fork 无 mise、无内置 git，受管二进制目录改为 CodeMate 受管
+// node 运行时 + dsh 的 .bin（getBinarySearchDirs 见 resolveManagedSearchDirs）；
+// mergeBinaryExecutionEnv / getBundledGitDir 仍为空实现。
 // fork 缝：registry-js 未随 fork 安装（V2 依赖）。以 string 变量承载模块名，让 TS 不做
 // 静态解析（fork tsconfig noImplicitAny:false 下 dynamic import 为 any）；运行时 import
 // 失败仍走 readWindowsRegistryPath 原有 try/catch 回退，与 V2 失败路径一致。
@@ -41,9 +44,78 @@ function dedupePathSegments(segments: string[]): string[] {
   return unique
 }
 
-/** fork 缝：V2 返回 mise shims 目录与 cherry.bin；fork 无受管工具目录，返回空。 */
-function getBinarySearchDirs(): string[] {
-  return []
+/** fork 缝：V2 返回 mise shims 目录与 cherry.bin；fork 的等价物是 CodeMate 受管 node
+ *  运行时目录（见 resolveManagedSearchDirs）。 */
+function getBinarySearchDirs(): Promise<string[]> {
+  return resolveManagedSearchDirs()
+}
+
+/**
+ * 受管 node 运行时标记文件名——与 binaryManager/runtimeDownloader.ts 的
+ * RUNTIME_VERSION_MARKER 同值。此处刻意不 import 那个模块：runtimeDownloader 会拉起
+ * node-stream-zip 等重依赖，而 shellEnv 在主进程启动路径上被每个子进程读取。
+ */
+const RUNTIME_VERSION_MARKER = '.codemate-runtime-version'
+
+let managedSearchDirsMemo: Promise<string[]> | null = null
+
+/**
+ * 丢弃受管目录的记忆，下次拼 PATH 时重扫一遍。
+ *
+ * 为什么非要有这个入口（真机时序）：应用刚启动、受管 node 还没装时，第一个子进程
+ * （快照探针）就把"运行时根不存在 ⇒ 只有 .bin"的结果记进了 memo。此后装完受管 node，
+ * 那条 memo 仍钉着空数组 → 探针的 PATH 里永远没有 node → **首次安装依旧报
+ * "损坏或过时的安装"，用户必须重启应用才生效**。装完就作废，让下一次探针看到新目录。
+ */
+export function invalidateManagedSearchDirs(): void {
+  managedSearchDirsMemo = null
+}
+
+/**
+ * 找出实际安装的受管 node 运行时目录（版本段由标记文件自证，不硬编码版本号）。
+ * 定位失败（无运行时 / 非 Electron 进程）返回空数组——宁可少一个回退目录，绝不抛。
+ */
+async function discoverManagedNodeDirs(): Promise<string[]> {
+  try {
+    const root = managedNodeRuntimeRoot()
+    const entries = await fsp.readdir(root, { withFileTypes: true })
+    const dirs: string[] = []
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue
+      const dir = path.join(root, entry.name)
+      try {
+        const marker = (await fsp.readFile(path.join(dir, RUNTIME_VERSION_MARKER), 'utf-8')).trim()
+        if (!marker) continue
+      } catch {
+        continue // 没有受管标记的目录不是我们的运行时（可能是半成品 .tmp-*）
+      }
+      dirs.push(dir)
+      if (!isWin) dirs.push(path.join(dir, 'bin'))
+    }
+    return dirs
+  } catch (error) {
+    logger.debug('Managed runtime dirs unavailable', { error })
+    return []
+  }
+}
+
+/**
+ * 受管工具搜索目录（**前置**到 PATH）。Windows：`runtime/node/<版本>`（内含 node.exe）
+ * + 各 npm 型工具的 `.bin`（dshmarket 的 pnpm shim 落点，见 managedToolBinDirs）。这些目录
+ * 必须进 PATH——npm 的 bin shim 自己
+ * 不带 node，找不到 `node` 就直接失败（真机事故见 binaryManager/layout.ts 的
+ * managedNodeRuntimeRoot 注释）。
+ *
+ * 顺序必须在**前**，不能追加到尾部：受管 node 是这些工具的契约运行时，PATH 上若存在
+ * 用户自装的旧 node（v18 之类），`.cmd` shim 会先捞到它、用错版本去跑 dsh，症状与
+ * "找不到 node" 同样是"装好了却起不来"。前置也与启动路径一致——DeepSeekHarnessService
+ * 本来就用 withPathPrepend 把受管 nodeBinDir 放在最前。
+ */
+function resolveManagedSearchDirs(): Promise<string[]> {
+  // 记忆的是整份候选（含各 npm 型工具的 .bin）——每次调用都重算会把 managedToolBinDirs()
+  // 再拼一遍，且 Promise.all 的并发读者会看到不同数组。
+  managedSearchDirsMemo ??= discoverManagedNodeDirs().then((nodeDirs) => [...nodeDirs, ...managedToolBinDirs()])
+  return managedSearchDirsMemo
 }
 
 /** fork 缝：V2 注入 MISE_* 并前置 shims 目录；fork 无 mise，环境原样浅拷贝。 */
@@ -89,24 +161,30 @@ export function withPathPrepend(
 }
 
 /**
- * Ensures Cherry-managed tool directories are appended to the user's PATH while
- * preserving the original key casing and avoiding duplicate segments.
+ * Puts the Cherry-managed tool directories (managed Node runtime, every npm-type tool's
+ * `.bin`) at the FRONT of PATH — see resolveManagedSearchDirs for why they must win over
+ * a system Node — while preserving the original key casing and avoiding duplicate segments.
+ * Bundled MinGit (empty in this fork) still goes to the very tail.
  */
-const appendCherryToolDirsToPath = (env: Record<string, string>) => {
+const prependCherryToolDirsToPath = async (env: Record<string, string>) => {
   const pathSeparator = isWin ? ';' : ':'
-  const cherryToolDirs = getBinarySearchDirs()
-  // Bundled MinGit as a last-resort git: appended after the managed tool dirs so
-  // it lands at the very tail, letting any spawned process (agent, CLI) resolve a
-  // bare `git` with no system git — while system/mise/PATH git always win ahead.
+  const cherryToolDirs = await getBinarySearchDirs()
+  // Bundled MinGit as a last-resort git: it stays at the very tail, letting any
+  // spawned process (agent, CLI) resolve a bare `git` with no system git — while
+  // system/mise/PATH git always win ahead.
   const bundledGitDir = getBundledGitDir()
-  const tailDirs = bundledGitDir ? [...cherryToolDirs, bundledGitDir] : cherryToolDirs
+  const tailDirs = bundledGitDir ? [bundledGitDir] : []
   const pathKeys = Object.keys(env).filter((key) => key.toLowerCase() === 'path')
   const canonicalPathKey = pathKeys[0] || (isWin ? 'Path' : 'PATH')
   const existingPathValue = env[canonicalPathKey] || env.PATH || ''
 
-  // Existing segments first, tool dirs appended — dedup keeps an already-present
-  // tool dir at its original position instead of moving it to the tail.
-  const updatedPath = dedupePathSegments([...existingPathValue.split(pathSeparator), ...tailDirs]).join(pathSeparator)
+  // Managed dirs first, then the user's own segments, MinGit last — dedup keeps an
+  // already-present segment at its first (now earliest) position instead of duplicating it.
+  const updatedPath = dedupePathSegments([
+    ...cherryToolDirs,
+    ...existingPathValue.split(pathSeparator),
+    ...tailDirs
+  ]).join(pathSeparator)
 
   if (pathKeys.length > 0) {
     pathKeys.forEach((key) => {
@@ -418,7 +496,7 @@ export async function getRawShellEnv(signal?: AbortSignal): Promise<Record<strin
 
 export async function getShellEnv(signal?: AbortSignal): Promise<Record<string, string>> {
   const env = await getRawShellEnv(signal)
-  appendCherryToolDirsToPath(env)
+  await prependCherryToolDirsToPath(env)
   applyBinaryExecutionEnv(env)
   return env
 }
@@ -442,7 +520,7 @@ export async function refreshShellEnv(): Promise<Record<string, string>> {
     // lookups hit the filesystem live; logged so the reuse is observable.
     logger.debug('refreshShellEnv reusing in-flight shell capture instead of re-spawning')
     const env = { ...(await inflight) }
-    appendCherryToolDirsToPath(env)
+    await prependCherryToolDirsToPath(env)
     applyBinaryExecutionEnv(env)
     return env
   }

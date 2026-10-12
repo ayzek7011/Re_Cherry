@@ -12,14 +12,14 @@ import path from 'node:path'
 
 import { loggerService } from '@logger'
 import { isWin } from '@main/constant'
-import { probeBinary, probeSystemPath } from '@main/services/codeCli/resolveBinary'
+import { probeBinaryDetailed, probeBinary, probeSystemPath } from '@main/services/codeCli/resolveBinary'
 import {
   cacheRoot,
   codeMateRuntimeRoot,
   codeMateToolHome,
   deepSeekHarnessHome
 } from '@main/services/deepSeekHarness/paths'
-import { withPathPrepend } from '@main/utils/shellEnv'
+import { invalidateManagedSearchDirs, withPathPrepend } from '@main/utils/shellEnv'
 import { IpcChannel } from '@shared/IpcChannel'
 import type { InstallProgressPayload, InstallProgressStep } from '@shared/types/installProgress'
 import { buildInstallProgressPayload, createStageTracker } from '@shared/types/installProgress'
@@ -40,6 +40,7 @@ import {
   toolDir
 } from './layout'
 import { installMarketBundle, nodeMarketIo, readProfileBundleVersion } from './marketBaseline'
+import { resolveNpmBinTarget as resolveNpmBinTargetFrom } from './packageBin'
 import { createPipProgress, feedPipProgress, formatPipProgress } from './pipProgress'
 import { BINARY_TOOL_PRESETS, type BinaryToolName, type BinaryToolPreset } from './presets'
 import { PYPI_VERSION_SOURCES } from './pypiSources'
@@ -101,6 +102,16 @@ const PYPI_FALLBACK_INDEX = 'https://pypi.org/simple'
 const PIP_INSTALL_TIMEOUT_MS = 45 * 60_000
 
 const TOOL_VERSION_MARKER = '.codemate-version'
+
+/**
+ * 安装收尾"启动核验"（launch 阶段）探测受管可执行物的时长预算。
+ *
+ * 比快照/启动通道的 5 秒宽得多：那 5 秒是给"已经在跑的稳定环境"定的，而这里是**安装刚结束**
+ * 的时刻——npm 树是刚从几百个包里落盘的，`E:\` 这类移动盘/网络盘上首次 node 冷启动 + 首次
+ * 载入整棵依赖树，超过 5 秒完全正常。用 5 秒判"装坏了"会把好安装判死；用分钟级预算才既能
+ * 抓住"真的起不来"，又不会把"慢"误报成"坏"。
+ */
+const LAUNCH_PROBE_TIMEOUT_MS = 90_000
 
 /** 失败原因在快照里保留的字符数（够看到 pnpm/npm 的关键几行，又不至于把缓存写肿）。 */
 const INSTALL_FAILURE_DETAIL_LIMIT = 600
@@ -277,6 +288,25 @@ async function readNpmPackageVersion(packageJsonPath: string): Promise<string> {
   }
 }
 
+/**
+ * npm 包 `package.json` 的 `bin` 里、`binName` 对应的**入口文件绝对路径**；没有该声明或
+ * 读不到 manifest 返回 undefined。
+ *
+ * 用途：`.bin/<name>.cmd` 这个 shim 只是转发器（真机 shim 内容：`"%_prog%" "%dp0%\..\<pkg>\
+ * lib\bin.js" %*`）——它存在、`npm install` 退出 0，但入口文件缺失时**一样起不来**。此前安装
+ * 只检查 shim 在不在，于是"装完了但起不来"能一路报到安装成功。
+ *
+ * 解析逻辑（含各种 manifest 形态与路径逃逸防护）单点到 packageBin.ts 并有单测；此处只做 I/O 装配。
+ */
+function resolveNpmBinTarget(packageDir: string, binName: string): Promise<string | undefined> {
+  return resolveNpmBinTargetFrom(
+    { readFile: (filePath) => fsp.readFile(filePath, 'utf-8') },
+    packageDir,
+    binName,
+    path.sep
+  )
+}
+
 // ---------------------------------------------------------------------------
 // 安装器主体
 // ---------------------------------------------------------------------------
@@ -301,6 +331,15 @@ export class BinaryManager {
    */
   private readonly installFailures = new Map<string, string>()
   /**
+   * 本次安装解析出的版本号，由各安装函数登记、由 installTool 在**收尾核验通过之后**统一写进
+   * 版本标记文件。
+   *
+   * 此前各安装函数自己写标记（写在最后一行），语义是"跑到这行就算装好"；现在收尾多了一道
+   * 启动核验，标记必须等它通过才能落盘——否则核验失败时用户手上会留一棵"带版本标记、看起来
+   * 装好了"的坏树，快照还会把它判成 applied。生命周期与一次安装同长（finally 里清掉）。
+   */
+  private readonly installedVersions = new Map<string, string>()
+  /**
    * v1（W4-4）：当前正在跑的操作（同一时刻至多一个——`operationGate` 是全局互斥）。
    * 随快照下发（见 overlayOperation），不落盘。
    */
@@ -314,6 +353,55 @@ export class BinaryManager {
       // tryAcquire 的唯一失败原因就是"已被占用"——错误文本即上面的自定义消息。
       return undefined
     }
+  }
+
+  /**
+   * 本次安装的阶段序列（末尾恒为 launch 启动核验）。
+   *
+   * 三个工具的阶段不同（npm：运行时→装包→工具链→市场→PPT；pipx 等价：运行时→venv→pip；
+   * 源码：…→前端构建→部署），但**收尾那一关完全同形**：把刚装好的受管可执行物真的跑一次。
+   * 写在这里而不是各安装函数里，是为了让"装完必须验能不能启动"成为唯一一份、不可能被某个
+   * 分支漏掉的约定。
+   */
+  private installPipelineFor(plan: ToolPlan): readonly InstallProgressStep[] {
+    switch (plan.kind) {
+      case 'npm':
+        return ['runtime', 'extract', 'install', 'toolchain', 'market', 'ppt', 'launch']
+      case 'venv':
+        return ['runtime', 'extract', 'venv', 'pip', 'launch']
+      case 'source':
+        return ['runtime', 'extract', 'source', 'unpack', 'venv', 'deps', 'front', 'build', 'deploy', 'launch']
+    }
+  }
+
+  /**
+   * 安装收尾的启动核验（launch 阶段）。
+   *
+   * 这是"装完了但起不来"这类缺陷的正面防线：在此之前，安装成功的判据只有"命令退出 0 +
+   * 可执行文件存在"——npm 装完 shim 在、venv 建好解释器在，于是安装报成功、版本标记照写；
+   * 等到用户点"启动"才由生命周期服务炸出 "exited before it was ready"（真机报错：
+   * `...\tools\dsh\node_modules\.bin\dsh.cmd ... it failed to run (--version)`）。
+   * 现在把这个发现提前到安装里，并**带上探针的真实失败原因**（退出码 / stderr / 是不是超时），
+   * 而不是留给用户一句"可能损坏或过时"的猜测——装出来的东西不能用，就该在装的时候说清楚。
+   *
+   * 探针的 env 走 `getShellEnv()`（executeCommand 的默认），而它现在会把受管 node 运行时
+   * 目录挂进 PATH——npm 的 bin shim 自己不带 node，缺这一步会把好安装判死。
+   */
+  private async verifyLaunch(plan: ToolPlan, enter: InstallProgressEnter, extraDetail?: string): Promise<void> {
+    const target = managedBinaryPath(plan)
+    enter('launch', {
+      detail: extraDetail ?? `running ${path.basename(target)} --version`
+    })
+    const probe = await probeBinaryDetailed(target, { timeout: LAUNCH_PROBE_TIMEOUT_MS })
+    if (probe.runnable) {
+      logger.info(`Managed tool ${plan.name} passed the post-install launch check (${probe.version ?? 'no version'})`)
+      return
+    }
+    throw new Error(
+      `The installation finished but ${target} could not be run (--version): ${probe.detail ?? 'no diagnostics'}. ` +
+        `Common reasons: the managed runtime is not on PATH, an antivirus blocked the command shim, ` +
+        `or the download did not complete — retry the install, and if it keeps failing report the reason above.`
+    )
   }
 
   /**
@@ -538,11 +626,28 @@ export class BinaryManager {
     // v1（W4-4）：登记进行态（随快照下发）——渲染层切页/重挂载后靠它恢复"正在安装"。
     this.beginOperation(name, 'install')
     try {
-      if (plan.kind === 'npm') await this.installNpmTool(plan, targetVersion)
-      else if (plan.kind === 'venv') await this.installVenvTool(plan, targetVersion)
-      else await this.installSourceTool(plan, targetVersion)
+      // 本次唯一的阶段器：阶段序列在这里定死（含收尾的 launch 核验），三个安装函数共用它，
+      // 不再各自算一份——否则"某条分支漏掉收尾核验"就会成为静默的常驻缺陷。
+      const pipeline = this.installPipelineFor(plan)
+      const enter = this.stepper(plan, pipeline)
+      let launchDetail: string | undefined
+      if (plan.kind === 'npm') await this.installNpmTool(plan, enter, targetVersion)
+      else if (plan.kind === 'venv') await this.installVenvTool(plan, enter, targetVersion)
+      else launchDetail = await this.installSourceTool(plan, enter, targetVersion)
+      // 收尾核验（唯一写版本标记之前的最后一关）：装好的东西必须真的能跑。
+      await this.verifyLaunch(plan, enter, launchDetail)
+      // 成功后才写版本标记——"标记在 = 装好了"这条既有语义保持成立（此前标记由各安装函数
+      // 自己写，收尾一旦有核验就必须把写入提到它之后，否则核验失败会留下一个"看起来装好了"的树）。
+      await fsp.writeFile(
+        path.join(toolDir(name), TOOL_VERSION_MARKER),
+        this.installedVersions.get(name) ?? '',
+        'utf-8'
+      )
       // 成功后强制重探——紧随的 broadcast 让渲染层直接命中新状态，
       // 不再闪回安装前旧态。
+      // 先作废 shellEnv 的受管目录记忆：首次安装时应用的第一个子进程早已把"没有受管
+      // node"记进 memo，不作废的话紧随的重探仍然拿不到 node，装完照样判"损坏"。
+      invalidateManagedSearchDirs()
       await this.refreshSnapshotCache().catch((error) =>
         logger.warn('Post-install snapshot refresh failed', error as Error)
       )
@@ -555,6 +660,7 @@ export class BinaryManager {
       this.installFailures.set(name, message.slice(0, INSTALL_FAILURE_DETAIL_LIMIT))
       return { success: false as const, message }
     } finally {
+      this.installedVersions.delete(name)
       this.endOperation()
       release()
       this.broadcastChanged()
@@ -562,11 +668,9 @@ export class BinaryManager {
   }
 
   /** dsh（npm 型）：受管 node → npm install --prefix → 版本标记 → bundle 装配（dshmarket + PPT）。 */
-  private async installNpmTool(plan: ToolPlan, targetVersion?: string): Promise<void> {
-    // 本次安装的阶段序列（等权分段，见 InstallStagePosition 注释）。runtime 段里的解压由下载器
-    // 触发 'extract'，故它也必须是序列里的一步——否则条会冻在 100% 等 npm 起步。
-    const pipeline: readonly InstallProgressStep[] = ['runtime', 'extract', 'install', 'toolchain', 'market', 'ppt']
-    const enter = this.stepper(plan, pipeline)
+  private async installNpmTool(plan: ToolPlan, enter: InstallProgressEnter, targetVersion?: string): Promise<void> {
+    // 本次安装的阶段序列由 installTool 统一给出（含收尾核验），此处只消费。
+    const pipeline = this.installPipelineFor(plan)
     enter('runtime')
     const runtime = await ensureNodeRuntime(this.progressCallbacks(plan, pipeline, 'runtime'))
     const dir = toolDir(plan.name)
@@ -599,6 +703,14 @@ export class BinaryManager {
       throw new Error(
         `npm install finished but ${managedPath} is missing; ${dir} contains: ${await listDirForDiagnostics(dir)}`
       )
+    }
+    // shim 在 ≠ 能用：`.bin/<name>.cmd` 只是转发器，它指向的入口文件才是本体（真机报错
+    // `...\node_modules\bin\dsh.cmd ... failed to run (--version)` 就卡在这一层）。声明与文件
+    // 分开核验——缺哪个都能指名道姓地说出来，而不是留给启动时才炸。
+    const packageDir = path.join(dir, 'node_modules', ...plan.preset.packageName.split('/'))
+    const binTarget = await resolveNpmBinTarget(packageDir, plan.name)
+    if (binTarget && !(await pathExists(binTarget))) {
+      throw new Error(`npm install registered the "${plan.name}" command but its entry file is missing: ${binTarget}`)
     }
 
     // bundle 装配——dshmarket（插件市场）+ PPT（社区预构建 tgz）。
@@ -697,15 +809,15 @@ export class BinaryManager {
     const version = await readNpmPackageVersion(
       path.join(dir, 'node_modules', ...plan.preset.packageName.split('/'), 'package.json')
     )
-    await fsp.writeFile(path.join(dir, TOOL_VERSION_MARKER), version, 'utf-8')
+    this.installedVersions.set(plan.name, version)
   }
 
   /** hermes（pipx 型 → venv 等价）：受管 CPython → python -m venv → venv pip install。 */
-  private async installVenvTool(plan: ToolPlan, targetVersion?: string): Promise<void> {
-    // 阶段序列：pip 阶段没有任何诚实的百分比（分母要等 pip 自己解析完才知道），所以它靠
+  private async installVenvTool(plan: ToolPlan, enter: InstallProgressEnter, targetVersion?: string): Promise<void> {
+    // 阶段序列由 installTool 统一给出（含收尾核验）；此段只消费，不再自建。
+    // pip 阶段没有任何诚实的百分比（分母要等 pip 自己解析完才知道），所以它靠
     // "上一段已完成 + 段内包数/字节数"表达进度（真机反馈"hermes 进度条不动"就在这一段）。
-    const pipeline: readonly InstallProgressStep[] = ['runtime', 'extract', 'venv', 'pip']
-    const enter = this.stepper(plan, pipeline)
+    const pipeline = this.installPipelineFor(plan)
     enter('runtime')
     const { pythonBin } = await ensurePythonRuntime(this.progressCallbacks(plan, pipeline, 'runtime'))
     // 路径用变量名与本类其余处一致，便于对照（venv 的受管布局见 managedBinaryPath）。
@@ -771,7 +883,8 @@ export class BinaryManager {
           `pip install finished but ${launcher} is missing; ${target} contains: ${await listDirForDiagnostics(target)}`
         )
       }
-      // 版本标记：pip show 解析 Version 行；解析失败留空。
+      // 版本登记：pip show 解析 Version 行；解析失败留空。标记文件由 installTool 在收尾
+      // 核验通过后统一写（见 installedVersions 注释）。
       let version = ''
       try {
         version = parsePipShowVersion(
@@ -785,39 +898,35 @@ export class BinaryManager {
           error: this.errorMessage(error)
         })
       }
-      await fsp.writeFile(path.join(target, TOOL_VERSION_MARKER), version, 'utf-8')
+      this.installedVersions.set(plan.name, version)
     })
   }
 
   /**
    * 源码型（paper-agent）：GitHub 源码树 → 受管 CPython venv 装依赖 → 受管 node
-   * 构建前端 → 用户态播种 + 产物部署 → 写 commit SHA 标记。
+   * 构建前端 → 用户态播种 + 产物部署 → 登记 commit SHA 版本。
    *
    * 升级语义 = 再装一次：源码树整目录替换（纯上游代码，无用户态混入），venv 保留（pip
    * 增量解析依赖变更），用户态在 home/<tool> 全程不受影响。"装的恒是该分支当前 HEAD"
    * 沿用 fork 既有的 name-only 安装语义（不做 SHA 钉定）。
+   *
+   * 返回值是收尾核验的 detail 文案（这一段最后一次长命令是 vite build，值得在核验阶段
+   * 说明"刚跑完构建"），由 installTool 传给 verifyLaunch。
    */
-  private async installSourceTool(plan: ToolPlan, targetVersion?: string): Promise<void> {
+  private async installSourceTool(
+    plan: ToolPlan,
+    enter: InstallProgressEnter,
+    targetVersion?: string
+  ): Promise<string> {
     const { repo, branch } = plan.preset
     if (!repo || !branch) {
       throw new Error(`Source tool "${plan.name}" has no repo/branch configured`)
     }
-    // 阶段序列在**运行时**组出来：venv 只在第一次安装（或 venv 被清掉）时才建，所以它是不
-    // 定常驻的一段。序列必须与本次真会走的步骤一致——多算一段会让条走到不满，少算一段会让
-    // 最后一步越界（"第 9 步 / 共 8 步"）。这一步 fs 探测因此不能推迟到中段。
+    // 阶段序列由 installTool 统一给出：那里的骨架**恒含** venv 段（venv 是否真跑由 needsVenv
+    // 决定），因此这里不能再按 needsVenv 组序列——两处序列一不一致，阶段位置就会算错
+    // （"第 N 步 / 共 M 步"与实际不符）。venv 只在第一次安装（或 venv 被清掉）时才建。
+    const pipeline = this.installPipelineFor(plan)
     const needsVenv = !(await pathExists(sourceVenvPython(plan.name)))
-    const pipeline: readonly InstallProgressStep[] = [
-      'runtime',
-      'extract',
-      'source',
-      'unpack',
-      ...(needsVenv ? (['venv'] as const) : []),
-      'deps',
-      'front',
-      'build',
-      'deploy'
-    ]
-    const enter = this.stepper(plan, pipeline)
     enter('runtime')
     // 两个运行时**串行**下载。原先并行是为了快，但两个各 ~30MB 的档案同时上报
     // 字节进度，进度条会在两条曲线之间来回跳（"真实进度"变成噪声）；串行的总字节数不变，
@@ -938,8 +1047,12 @@ export class BinaryManager {
     await seedUserConfig(sourceDir, home)
     await deployFrontDist(sourceDir, home)
 
-    // 版本标记 = 短 SHA（展示与更新对比都以它为准；完整 SHA 只用于下载 URL）。
-    await fsp.writeFile(path.join(dir, TOOL_VERSION_MARKER), sha.slice(0, 8), 'utf-8')
+    // 版本 = 短 SHA（展示与更新对比都以它为准；完整 SHA 只用于下载 URL）。标记文件由
+    // installTool 在收尾核验通过后统一写。
+    this.installedVersions.set(plan.name, sha.slice(0, 8))
+    // 收尾核验的 detail：这一型"可执行物"是 venv 解释器，真启动面是 home 下的源码 + 前端产物，
+    // 说清楚验的是哪个，用户/日志才知道这一关到底保证了什么。
+    return `running ${path.basename(sourceVenvPython(plan.name))} --version (source tree at ${sourceDir}, front deployed to ${home})`
   }
 
   /** 该类运行时是否仍被别的已装工具需要（paper-agent 与 hermes 共享 CPython）。 */

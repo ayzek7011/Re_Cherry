@@ -27,6 +27,11 @@ import { executeCommand } from '@main/utils/processRunner'
 
 const logger = loggerService.withContext('ResolveBinary')
 
+/** 能力探针的入参：所有通道（快照、启动、安装收尾核验）都探同一个东西，避免各处漂移。 */
+const PROBE_ARGS: readonly string[] = ['--version']
+/** 探针失败原因的长度上限（要进用户可见的报错与日志，过长会把真话淹掉）。 */
+const PROBE_DETAIL_LIMIT = 200
+
 export interface ResolvedBinary {
   source: 'system' | 'managed'
   path: string
@@ -34,6 +39,43 @@ export interface ResolvedBinary {
   version?: string
   /** 二进制可运行（`--version` 退出码 0）。false ⇒ 快照层标 broken、启动层拒绝。 */
   runnable: boolean
+  /**
+   * 探针失败原因（超时 / 退出码 + stderr / 起不来），成功时为 undefined。
+   *
+   * 真机事故：这个字段原先不存在，探针只留一行日志——于是用户在 /code 面板上看到的
+   * 是"它 failed to run (--version)，可能损坏或过时"这种**猜出来的**解释，日志里也只有
+   * "失败了"四个字：退出码、stderr、是不是超时全被丢掉，真因（缺依赖 / .cmd shim 指向的
+   * 入口文件不存在 / 5 秒冷启动没跑完）谁也不知道。探针失败必须连带"为什么"一起上报。
+   */
+  probeDetail?: string
+}
+
+/** 把多行 stderr 压成一行诊断尾巴（空白折叠 + 截断）。 */
+function collapseDiagnostic(text: string): string {
+  const collapsed = text.replace(/\s+/g, ' ').trim()
+  if (collapsed.length <= PROBE_DETAIL_LIMIT) return collapsed
+  return `${collapsed.slice(0, PROBE_DETAIL_LIMIT - 1)}…`
+}
+
+/**
+ * 把探针抛出的错误转成人能读的原因。executeCommand 的失败面共三类：超时
+ * （`Command timed out after <n>ms`）、非零退出（stderr 原文，空则 `Command failed with
+ * code <c>`）、根本起不来（spawn 的 ENOENT/EINVAL/EACCES 原文）。
+ */
+function describeProbeError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error)
+  if (/timed out after \d+ms/.test(message)) return message
+  return collapseDiagnostic(message) || 'the probe produced no output'
+}
+
+/** 探针产物：runnable/version 如上，另带失败原因与命令原始输出（安装收尾核验要用后者定位）。 */
+export interface BinaryProbeDetail {
+  runnable: boolean
+  version?: string
+  /** `--version` 的 stdout（成功时才有内容）。 */
+  stdout: string
+  /** 失败原因（成功为 undefined）。 */
+  detail?: string
 }
 
 export function probeSystemPath(executable: string): Promise<string | undefined> {
@@ -49,16 +91,25 @@ export function probeSystemPath(executable: string): Promise<string | undefined>
 
 /** `--version` 能力探针：能跑且非空输出 → {runnable:true, version}；否则 runnable:false。
  * 二次真机事故修复：原用裸 execFile（.cmd 直接 spawn EINVAL），换 V2 现成的
- * executeCommand（内部 cross-spawn 处理 .cmd 转发）。非零退出/超时 → 不能跑（诊断留日志）。 */
-export async function probeBinary(binPath: string): Promise<{ runnable: boolean; version?: string }> {
+ * executeCommand（内部 cross-spawn 处理 .cmd 转发）。非零退出/超时 → 不能跑，原因一并返回
+ * （见 BinaryProbeDetail 注释：吞掉原因会让用户和日志都只剩猜测）。 */
+export async function probeBinaryDetailed(binPath: string, options?: { timeout?: number }): Promise<BinaryProbeDetail> {
+  const timeout = options?.timeout ?? 5000
   try {
-    const stdout = await executeCommand(binPath, ['--version'], { timeout: 5000 })
+    const stdout = await executeCommand(binPath, [...PROBE_ARGS], { timeout })
     const firstLine = stdout.split(/\r?\n/, 1)[0]?.trim().slice(0, 80)
-    return { runnable: true, version: firstLine || undefined }
-  } catch {
-    logger.info(`code-mate: probe --version failed for ${binPath}`)
-    return { runnable: false }
+    return { runnable: true, ...(firstLine ? { version: firstLine } : {}), stdout }
+  } catch (error) {
+    const detail = describeProbeError(error)
+    logger.info(`code-mate: probe --version failed for ${binPath}: ${detail}`)
+    return { runnable: false, stdout: '', detail }
   }
+}
+
+/** 探针的收窄形态（快照/启动通道只关心 runnable 与 version）。 */
+export async function probeBinary(binPath: string): Promise<{ runnable: boolean; version?: string }> {
+  const probe = await probeBinaryDetailed(binPath)
+  return { runnable: probe.runnable, ...(probe.version ? { version: probe.version } : {}) }
 }
 
 /** 受管布局映射（单点到 binaryManager/layout.ts——此前本文件内联一份并与
@@ -80,16 +131,19 @@ export async function resolveBinary(executable: string): Promise<ResolvedBinary 
     ))
   ) {
     // 受管件也过探针：装了但跑不起来（peer 缺失/损坏）不该被当成可启动。
-    const probe = await probeBinary(managed)
+    const probe = await probeBinaryDetailed(managed)
     if (!probe.runnable) {
-      logger.warn(`code-mate: managed "${executable}" at ${managed} failed the --version probe`)
+      logger.warn(
+        `code-mate: managed "${executable}" at ${managed} failed the --version probe: ${probe.detail ?? 'unknown'}`
+      )
     }
     logger.info(`code-mate: "${executable}" resolved to managed ${managed}`)
     return {
       source: 'managed',
       path: managed,
       ...(probe.version ? { version: probe.version } : {}),
-      runnable: probe.runnable
+      runnable: probe.runnable,
+      ...(probe.detail ? { probeDetail: probe.detail } : {})
     }
   }
   const found = await probeSystemPath(executable)
@@ -100,7 +154,7 @@ export async function resolveBinary(executable: string): Promise<ResolvedBinary 
   // where.exe 在 Win 上可能返回带引号或多行结果；取首行并去引号。
   const normalized = found.replace(/^"(.*)"$/, '$1')
   const systemPath = path.isAbsolute(normalized) ? normalized : found
-  const probe = await probeBinary(systemPath)
+  const probe = await probeBinaryDetailed(systemPath)
   logger.info(`code-mate: "${executable}" resolved to ${systemPath}`, {
     ...(probe.version ? { version: probe.version } : {}),
     runnable: probe.runnable
@@ -109,6 +163,7 @@ export async function resolveBinary(executable: string): Promise<ResolvedBinary 
     source: 'system',
     path: systemPath,
     ...(probe.version ? { version: probe.version } : {}),
-    runnable: probe.runnable
+    runnable: probe.runnable,
+    ...(probe.detail ? { probeDetail: probe.detail } : {})
   }
 }

@@ -215,7 +215,7 @@ export class HermesDashboardService {
     if (!binary.runnable) {
       throw new HermesDashboardStartError(
         'not_installed',
-        `Found Hermes at ${binary.path} but it failed to run (--version). It may lack the dashboard capability or be a broken installation — install the managed version from the CodeMate panel.`
+        `Found Hermes at ${binary.path} but it failed to run (--version).${binary.probeDetail ? ` Reason: ${binary.probeDetail}.` : ''} It may lack the dashboard capability or be a broken installation — install the managed version from the CodeMate panel.`
       )
     }
     const env = binary.source === 'system' ? await getRawShellEnv() : await refreshShellEnv()

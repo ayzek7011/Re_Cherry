@@ -35,6 +35,7 @@ import { isWin } from '@main/constant'
 import { cacheRoot, codeMateToolsRoot, deepSeekHarnessHome, nodeRuntimeDir } from '@main/services/deepSeekHarness/paths'
 import { withPathPrepend } from '@main/utils/shellEnv'
 
+import { managedToolBinDirs } from './layout'
 import { NPM_REGISTRY_FALLBACK, NPM_REGISTRY_MIRROR } from './registry'
 import { DEFAULT_COMMAND_TIMEOUT_MS, runBoundedCommand } from './runCommand'
 import { NODE_VERSION } from './runtimeDownloader'
@@ -774,8 +775,8 @@ function marketCommandEnv(registry: string): NodeJS.ProcessEnv {
   const pathSep = isWin ? ';' : ':'
   const nodeDir = nodeRuntimeDir(NODE_VERSION)
   const nodeBinDir = isWin ? nodeDir : path.join(nodeDir, 'bin')
-  const toolsBinDir = path.join(codeMateToolsRoot(), 'dsh', 'node_modules', '.bin')
-  const env = withPathPrepend(process.env, [nodeBinDir, toolsBinDir], pathSep)
+  const toolsBinDirs = managedToolBinDirs()
+  const env = withPathPrepend(process.env, [nodeBinDir, ...toolsBinDirs], pathSep)
   env.DSH_HOME = deepSeekHarnessHome()
   env.npm_config_cache = path.join(cacheRoot(), 'npm')
   env.npm_config_store_dir = path.join(cacheRoot(), 'pnpm-store')

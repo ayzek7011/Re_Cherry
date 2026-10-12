@@ -40,7 +40,15 @@ export const INSTALL_PROGRESS_STEPS = [
   /** 构建前端（vite build）。 */
   'build',
   /** 部署前端产物与用户态播种。 */
-  'deploy'
+  'deploy',
+  /**
+   * 收尾启动核验：把刚装好的受管可执行物真的跑一次（`--version`）。
+   *
+   * 它必须是**最后一步**：在它之前的各段只证明"命令都成功退出、文件都在"，唯有过这一关
+   * 才证明"装出来的东西能启动"。放在写版本标记之前，失败即整次安装失败（见 BinaryManager
+   * 的 verifyLaunch）。此前没有这一步，于是"装完了但起不来"能一路报到安装成功。
+   */
+  'launch'
 ] as const
 
 export type InstallProgressStep = (typeof INSTALL_PROGRESS_STEPS)[number]

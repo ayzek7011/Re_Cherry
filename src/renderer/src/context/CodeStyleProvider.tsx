@@ -4,7 +4,7 @@ import { useSettings } from '@renderer/hooks/useSettings'
 import type { HighlightChunkResult, ShikiPreProperties } from '@renderer/services/ShikiStreamService'
 import { shikiStreamService } from '@renderer/services/ShikiStreamService'
 import { ThemeMode } from '@renderer/types'
-import { getHighlighter, getMarkdownIt, loadLanguageIfNeeded, loadThemeIfNeeded } from '@renderer/utils/shiki'
+import { getHighlighter, getMarkdownIt, loadLanguageAndThemeIfNeeded } from '@renderer/utils/shiki'
 import * as cmThemes from '@uiw/codemirror-themes-all'
 import type React from 'react'
 import { createContext, type PropsWithChildren, use, useCallback, useEffect, useMemo } from 'react'
@@ -150,9 +150,15 @@ export const CodeStyleProvider: React.FC<PropsWithChildren> = ({ children }) => 
   const highlightCode = useCallback(
     async (code: string, language: string) => {
       const highlighter = await getHighlighter()
-      await loadLanguageIfNeeded(highlighter, language)
-      await loadThemeIfNeeded(highlighter, activeShikiTheme)
-      return highlighter.codeToHtml(code, { lang: language, theme: activeShikiTheme })
+      // 必须把**实际加载成功**的 id 传给 codeToHtml：未知语言会被 loadLanguageIfNeeded
+      // 降级为 text、失败主题被降级为 one-light，仍传原始入参会因「未加载」直接 throw
+      //（上游已修、本仓曾遗漏，见 loadLanguageAndThemeIfNeeded 注释）。
+      const { loadedLanguage, loadedTheme } = await loadLanguageAndThemeIfNeeded(
+        highlighter,
+        language,
+        activeShikiTheme
+      )
+      return highlighter.codeToHtml(code, { lang: loadedLanguage, theme: loadedTheme })
     },
     [activeShikiTheme]
   )
