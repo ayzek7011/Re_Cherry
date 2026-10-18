@@ -860,6 +860,27 @@ export async function registerIpc(mainWindow: BrowserWindow, app: Electron.App) 
   })
   // 渲染层订阅缝（useCodeCliStatus）的"立即拉当前值"通道（载荷同 Status 广播）。
   ipcMain.handle(IpcChannel.CodeCli_DeepseekHarness_GetStatus, () => deepSeekHarnessService.getStatus())
+  // 重置编码助手数据：入参只收一个布尔，路径全部主进程从 paths.ts 派生（渲染层不传路径）。
+  ipcMain.handle(IpcChannel.CodeCli_DeepseekHarness_Reset, async (_, input) => {
+    const keepSessions = (input as { keepSessions?: unknown } | undefined)?.keepSessions === true
+    try {
+      await deepSeekHarnessService.resetData(keepSessions)
+      return { success: true as const }
+    } catch (error) {
+      return {
+        success: false as const,
+        message: error instanceof Error ? error.message : 'Failed to reset DeepSeek Harness data'
+      }
+    }
+  })
+  // 启动自愈开关：带 { enabled } 即写并返回生效值；省参即读（默认开）。
+  ipcMain.handle(IpcChannel.CodeCli_DeepseekHarness_AutoHeal, async (_, input) => {
+    const enabled = (input as { enabled?: unknown } | undefined)?.enabled
+    if (typeof enabled !== 'boolean') {
+      return { autoHeal: await deepSeekHarnessService.getAutoHealEnabled() }
+    }
+    return { autoHeal: await deepSeekHarnessService.setAutoHealEnabled(enabled) }
+  })
 
   // 编码助手（收尾）：Hermes Dashboard 生命周期 + code_cli 配置读写。
   // 非内核通道 → 本文件；V2 的 zod 路由层（hermes_dashboard.* / code_cli.*）不搬，

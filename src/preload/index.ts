@@ -68,7 +68,10 @@ const api = {
         return () => {
           ipcRenderer.removeListener(IpcChannel.CodeCli_DeepseekHarness_Status, listener)
         }
-      }
+      },
+      // 数据重置（入参只收布尔，路径主进程派生）与自愈开关（省参 = 读，默认开）。
+      reset: (input: { keepSessions: boolean }) => ipcRenderer.invoke(IpcChannel.CodeCli_DeepseekHarness_Reset, input),
+      autoHeal: (input?: { enabled: boolean }) => ipcRenderer.invoke(IpcChannel.CodeCli_DeepseekHarness_AutoHeal, input)
     },
     // Hermes Dashboard（收尾）：生命周期 + 状态广播订阅（照 deepseekHarness 写法）；
     // readConfig/writeConfig 为 code_cli 配置读写通道（V2 经 zod 路由 ipcApi.request，

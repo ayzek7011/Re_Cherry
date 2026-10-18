@@ -22,7 +22,7 @@ const logger = loggerService.withContext('AppUpdateService')
 export type { AppUpdateErrorCode, AppUpdatePhase, AppUpdatePrefs, AppUpdateProgress, AppUpdateState }
 
 /** 默认更新源：本仓自己的 GitHub Releases（公开仓库，运行期不需要 token）。 */
-export const DEFAULT_UPDATE_SOURCE = 'https://api.github.com/repos/Ayzek810/Re_Cherry'
+export const DEFAULT_UPDATE_SOURCE = 'https://api.github.com/repos/ayzek7011/Re_Cherry'
 
 const REQUEST_TIMEOUT_MS = 20_000
 /** 启动后延迟多久做首次检查：不跟启动过程抢 IO。 */

@@ -47,7 +47,7 @@ releaseInfo:
 
 | 项 | 事实 |
 |---|---|
-| 默认更新源 | `https://api.github.com/repos/Ayzek810/Re_Cherry`（公开仓库，运行期不需要 token） |
+| 默认更新源 | `https://api.github.com/repos/ayzek7011/Re_Cherry`（公开仓库，运行期不需要 token） |
 | 端点形态 | `<源>/releases/latest`；自建镜像按同一形状提供 |
 | 取哪个资产 | `Re_Cherry-<版本>-<架构>-setup.exe` |
 | 便携版 | 没有可替换的安装目录，不能自更新，只给手动下载的引导 |

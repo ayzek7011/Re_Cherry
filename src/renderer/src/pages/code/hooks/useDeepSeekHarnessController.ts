@@ -2,7 +2,7 @@ import { loggerService } from '@logger'
 import { useMinappPopup } from '@renderer/hooks/useMinappPopup'
 import { CodeCli, isApiGatewayProviderId, normalizeDeepSeekHarnessSettings } from '@shared/types/codeCli'
 import type { CliProviderConfig } from '@shared/types/codeCliState'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { resolveLaunchModelId } from '../cliConfig'
@@ -39,9 +39,13 @@ interface DeepSeekHarnessController {
   running: boolean
   starting: boolean
   stopping: boolean
+  autoHeal: boolean
+  resetting: boolean
   onLaunch: () => Promise<void>
   onStop: () => Promise<boolean>
   onOpenWebUi: () => Promise<void>
+  onToggleAutoHeal: (enabled: boolean) => Promise<void>
+  onResetData: (keepSessions: boolean) => Promise<boolean>
 }
 
 export function useDeepSeekHarnessController({
@@ -59,6 +63,22 @@ export function useDeepSeekHarnessController({
   const { status, url } = useManagedToolStatus('deepseek-harness', isDeepSeekHarness)
   const [launching, setLaunching] = useState(false)
   const [stopping, setStopping] = useState(false)
+  const [autoHeal, setAutoHeal] = useState(true)
+  const [resetting, setResetting] = useState(false)
+  // 自愈开关初值：主进程换代记录文件（缺省 = 开）。读失败静默保持默认，不打断页面。
+  useEffect(() => {
+    if (!isDeepSeekHarness) return
+    let cancelled = false
+    window.api.codeCli.deepseekHarness
+      .autoHeal()
+      .then((result) => {
+        if (!cancelled && result && typeof result.autoHeal === 'boolean') setAutoHeal(result.autoHeal)
+      })
+      .catch((error) => logger.warn('Failed to read the harness self-heal switch', error as Error))
+    return () => {
+      cancelled = true
+    }
+  }, [isDeepSeekHarness])
   const settings = useMemo(
     () => normalizeDeepSeekHarnessSettings(currentProviderConfig?.config),
     [currentProviderConfig?.config]
@@ -143,13 +163,55 @@ export function useDeepSeekHarnessController({
     }
   }, [openWebUi, t, url])
 
+  const handleToggleAutoHeal = useCallback(
+    async (enabled: boolean) => {
+      try {
+        const result = (await window.api.codeCli.deepseekHarness.autoHeal({ enabled })) as { autoHeal?: boolean }
+        setAutoHeal(result.autoHeal ?? enabled)
+      } catch (error) {
+        logger.error('Failed to toggle the harness self-heal switch', error as Error)
+        window.toast.error(t('code.launch.error'))
+      }
+    },
+    [t]
+  )
+
+  const handleResetData = useCallback(
+    async (keepSessions: boolean): Promise<boolean> => {
+      try {
+        setResetting(true)
+        const result = (await window.api.codeCli.deepseekHarness.reset({ keepSessions })) as {
+          success: boolean
+          message?: string
+        }
+        if (!result.success) {
+          window.toast.error(result.message ?? t('code.mate.reset.failed'))
+          return false
+        }
+        window.toast.success(t('code.mate.reset.success'))
+        return true
+      } catch (error) {
+        logger.error('Failed to reset harness data', error as Error)
+        window.toast.error(t('code.mate.reset.failed'))
+        return false
+      } finally {
+        setResetting(false)
+      }
+    },
+    [t]
+  )
+
   return {
     launching: isDeepSeekHarness && launching,
     running: isDeepSeekHarness && status === 'running',
     starting: isDeepSeekHarness && status === 'starting',
     stopping: isDeepSeekHarness && stopping,
+    autoHeal,
+    resetting: isDeepSeekHarness && resetting,
     onLaunch: handleLaunch,
     onStop: handleStop,
-    onOpenWebUi: handleOpenWebUi
+    onOpenWebUi: handleOpenWebUi,
+    onToggleAutoHeal: handleToggleAutoHeal,
+    onResetData: handleResetData
   }
 }

@@ -67,7 +67,7 @@ const AboutSettings: FC = () => {
         <SettingTitle>
           {t('settings.about.title')}
           <HStack alignItems="center">
-            <Link to="https://github.com/Ayzek810/Re_Cherry">
+            <Link to="https://github.com/ayzek7011/Re_Cherry">
               <GithubOutlined style={{ marginRight: 4, color: 'var(--color-text)', fontSize: 20 }} />
             </Link>
           </HStack>
@@ -75,14 +75,14 @@ const AboutSettings: FC = () => {
         <SettingDivider />
         <AboutHeader>
           <Row align="middle">
-            <AvatarWrapper onClick={() => onOpenWebsite('https://github.com/Ayzek810/Re_Cherry')}>
+            <AvatarWrapper onClick={() => onOpenWebsite('https://github.com/ayzek7011/Re_Cherry')}>
               <Avatar src={AppLogo} size={80} style={{ minHeight: 80 }} />
             </AvatarWrapper>
             <VersionWrapper>
               <Title>{APP_NAME}</Title>
               <Description>{t('settings.about.description')}</Description>
               <Tag
-                onClick={() => onOpenWebsite('https://github.com/Ayzek810/Re_Cherry/releases')}
+                onClick={() => onOpenWebsite('https://github.com/ayzek7011/Re_Cherry/releases')}
                 color="cyan"
                 style={{ marginTop: 8, cursor: 'pointer' }}>
                 v{version}
@@ -105,7 +105,7 @@ const AboutSettings: FC = () => {
             <Github size={18} />
             {t('settings.about.feedback.title')}
           </SettingRowTitle>
-          <Button onClick={() => onOpenWebsite('https://github.com/Ayzek810/Re_Cherry/issues/new/choose')}>
+          <Button onClick={() => onOpenWebsite('https://github.com/ayzek7011/Re_Cherry/issues/new/choose')}>
             {t('settings.about.feedback.button')}
           </Button>
         </SettingRow>

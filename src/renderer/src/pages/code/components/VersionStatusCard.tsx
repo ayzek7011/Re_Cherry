@@ -1,14 +1,28 @@
 import { useMinapps } from '@renderer/hooks/useMinapps'
 import type { InstallProgressPayload } from '@shared/types/installProgress'
-import { ArrowUpCircle, Download, ExternalLink, Pin, PinOff, Play, RefreshCw, Square, Trash2 } from 'lucide-react'
-import { type FC, useId } from 'react'
+import { Radio } from 'antd'
+import {
+  ArrowUpCircle,
+  Download,
+  Eraser,
+  ExternalLink,
+  Pin,
+  PinOff,
+  Play,
+  RefreshCw,
+  ShieldCheck,
+  ShieldOff,
+  Square,
+  Trash2
+} from 'lucide-react'
+import { type FC, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import type { VersionStatus } from '../types'
 import { BinaryInstallFailureRow, BinaryInstallingHint } from './BinaryInstallErrorDialog'
 import { CliIcon } from './CliIcon'
 import { InstallProgress } from './InstallProgress'
-import { Button, Tooltip } from './shadcn'
+import { Button, ConfirmDialog, Tooltip } from './shadcn'
 
 // fork 移植自 cherry-studio v2 src/renderer/pages/code/components/VersionStatusCard.tsx
 //（2026-09-24）。缝点三处，状态推导/四脚位（upgrade/remove/retry/launch）与
@@ -32,6 +46,10 @@ interface VersionStatusCardProps {
   onLaunch?: () => void
   onStop?: () => void
   onOpenDashboard?: () => void
+  /** 数据重置入口（仅编码助手卡传入；确认弹窗在本卡内，选项含保留/删除会话）。 */
+  onResetData?: (keepSessions: boolean) => void | Promise<unknown>
+  /** 启动自愈开关（仅编码助手卡传入）。 */
+  autoHeal?: { enabled: boolean; onToggle: (enabled: boolean) => void | Promise<void> }
   isInstalling?: boolean
   isUpgrading?: boolean
   upgradeDisabled?: boolean
@@ -67,6 +85,8 @@ export const VersionStatusCard: FC<VersionStatusCardProps> = ({
   onLaunch,
   onStop,
   onOpenDashboard,
+  onResetData,
+  autoHeal,
   isInstalling,
   isUpgrading,
   upgradeDisabled,
@@ -84,6 +104,10 @@ export const VersionStatusCard: FC<VersionStatusCardProps> = ({
 }) => {
   const { t } = useTranslation()
   const launchDisabledHintId = useId()
+  // 重置编码助手数据：确认弹窗（会话保留/删除）收在本卡内；pending 态由外层 promise 驱动。
+  const [resetDialogOpen, setResetDialogOpen] = useState(false)
+  const [resetKeepSessions, setResetKeepSessions] = useState(true)
+  const [resetPending, setResetPending] = useState(false)
   // fork 缝（用户裁决）：启动按钮右边的「固定到启动台」——把当前工具的加号页
   // 快捷方式一键建好/移除，不必先启动再右键侧栏磁贴。磁贴对象与 openSmartMinapp 的
   // transient 应用同形（url 留空：启动台点击进 /code 管理页，不消费 url）。
@@ -337,8 +361,70 @@ export const VersionStatusCard: FC<VersionStatusCardProps> = ({
               {t('code.open_web_ui')}
             </Button>
           )}
+
+          {onResetData && (
+            <Tooltip content={t('code.mate.reset.button')} placement="top" delay={300} sideOffset={6}>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => setResetDialogOpen(true)}
+                disabled={busy || resetPending}
+                aria-label={t('code.mate.reset.button')}
+                title={t('code.mate.reset.button')}
+                className="text-muted-foreground hover:text-destructive">
+                <Eraser className="size-3.5" />
+              </Button>
+            </Tooltip>
+          )}
+
+          {autoHeal && (
+            <Tooltip content={t('code.mate.auto_heal.label')} placement="top" delay={300} sideOffset={6}>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => void autoHeal.onToggle(!autoHeal.enabled)}
+                aria-label={t('code.mate.auto_heal.label')}
+                title={t('code.mate.auto_heal.label')}
+                className={autoHeal.enabled ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'}>
+                {autoHeal.enabled ? <ShieldCheck className="size-3.5" /> : <ShieldOff className="size-3.5" />}
+              </Button>
+            </Tooltip>
+          )}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={resetDialogOpen}
+        onOpenChange={setResetDialogOpen}
+        title={t('code.mate.reset.title')}
+        description={
+          <div className="space-y-3">
+            <p className="text-muted-foreground text-xs">{t('code.mate.reset.content')}</p>
+            <Radio.Group value={resetKeepSessions} onChange={(event) => setResetKeepSessions(event.target.value)}>
+              <div className="flex flex-col gap-2">
+                <Radio value={true}>{t('code.mate.reset.keep_sessions')}</Radio>
+                <Radio value={false}>{t('code.mate.reset.remove_sessions')}</Radio>
+              </div>
+            </Radio.Group>
+          </div>
+        }
+        cancelText={t('common.cancel')}
+        confirmText={t('code.mate.reset.confirm_button')}
+        destructive
+        confirmLoading={resetPending}
+        onConfirm={async () => {
+          if (!onResetData) return
+          setResetPending(true)
+          try {
+            await onResetData(resetKeepSessions)
+            setResetDialogOpen(false)
+          } finally {
+            setResetPending(false)
+          }
+        }}
+      />
 
       {installing && <BinaryInstallingHint />}
       {/* 安装进度：标准元素 InstallProgress（见该件注释——三个工具、任何界面共用同一件，

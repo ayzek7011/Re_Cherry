@@ -1,7 +1,7 @@
 # Re_Cherry
 
-[![License](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](https://github.com/Ayzek810/Re_Cherry/blob/main/LICENSE)
-[![Version](https://img.shields.io/badge/version-1.0.0-orange.svg)](https://github.com/Ayzek810/Re_Cherry/blob/main/package.json)
+[![License](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](https://github.com/ayzek7011/Re_Cherry/blob/main/LICENSE)
+[![Version](https://img.shields.io/badge/version-1.0.0-orange.svg)](https://github.com/ayzek7011/Re_Cherry/blob/main/package.json)
 
 ![alt text](build/logo.png)
 

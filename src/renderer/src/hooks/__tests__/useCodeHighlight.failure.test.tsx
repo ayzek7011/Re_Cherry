@@ -6,8 +6,8 @@
  * 3) processingRef 在 finally 复位，失败后下一次调用可正常继续；
  * 4) resetHighlight（主题切换）后，reset 之前起飞的旧结果按 generation 丢弃，不写回。
  */
-import { act, renderHook, waitFor } from '@testing-library/react'
 import type { HighlightChunkResult } from '@renderer/services/ShikiStreamService'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ThemedToken } from 'shiki/core'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 

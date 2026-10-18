@@ -138,6 +138,59 @@ artifactBuildCompleted: scripts/artifact-build-completed.js
 releaseInfo:
   releaseNotes: |
     <!--LANG:en-->
+    Re_Cherry 1.1.0 - CodeMate startup self-healing and an honest uninstall
+
+    This round makes the embedded DeepSeek Harness survive core generation changes instead of
+    failing with one opaque line, and closes the "reinstall inherits the previous life" data
+    trail.
+
+    🩹 CodeMate startup self-healing
+    - When the harness fails to start because a community bundle patch pins a service that the
+      new core no longer provides, the startup audit names the failing plugin, the culprit
+      bundle is disabled reversibly (selection only; dependencies and data untouched) and
+      startup is retried once. A second failure still reports the full diagnostic.
+    - Every automatic disable is logged with the culprit patch file and the recovery path
+      (upgrade the bundle, then re-enable it in the plugin market).
+    - The CodeMate panel gains a "Reset Data" action (stops the harness; sessions can be kept)
+      and a startup self-healing switch.
+
+    🧭 Core generation precheck
+    - After a successful start the harness generation is recorded. The next start announces a
+      generation change and logs a composition risk list (community patches that re-target
+      official rows or inject services), so the next upstream contract drift is a log line
+      instead of an afternoon.
+
+    🧹 Uninstall semantics
+    - The uninstaller now offers to remove all app data (chat history, CodeMate, settings)
+      behind a confirmation dialog; the data-directory registration pointer is cleaned in
+      both paths, so a reinstall no longer resurrects a previous incarnation.
+    - When the registered data directory is unavailable, the fallback to the default location
+      is logged - that fallback was the source of the ghost chat history.
+
+    <!--LANG:zh-CN-->
+    Re_Cherry 1.1.0 —— 编码助手启动自愈与诚实的卸载
+
+    本轮让内置 DeepSeek Harness 在核心换代后不再只会哑弹退出，并收掉"卸了重装继承上一世"
+    的数据尾巴。
+
+    🩹 编码助手启动自愈
+    - 核心换代后社区插件补丁把 required 行钉死在本代已不提供的服务上时，启动审计直接点名
+      肇事插件：可逆停用该插件（只取消组合层选择，依赖与数据不动）并重试一次；再次失败
+      仍报完整诊断。
+    - 每次自动停用都落日志：肇事补丁文件 + 恢复路径（升级后在插件市场重新勾选）。
+    - 编码助手面板新增「重置数据」（停止 harness，会话可选保留）与「启动自愈」开关。
+
+    🧭 核心换代预检
+    - 启动成功即记录核心版本；下次启动检测到换代会宣告"社区组合未经本代验证"，并落组合
+      风险清单（覆盖官方行或注入服务的社区补丁）——下一次上游契约漂移只是一条日志，不再
+      是一个下午。
+
+    🧹 卸载语义
+    - 卸载器新增确认框：可选同时删除全部应用数据（聊天记录、编码助手与设置）；两种路径
+      都会清掉数据目录登记指针，重装不再诈尸。
+    - 登记的数据目录不可用而回落默认位置时，现在会留下证据——那正是旧世数据诈尸的源头。
+
+    <!--LANG:en-->
     Re_Cherry 1.0.1 - Code highlighting and tool installation fixes
 
     This round closes two clusters of user-reported defects: streaming code blocks that rendered

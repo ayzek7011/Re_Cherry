@@ -319,6 +319,10 @@ export enum IpcChannel {
   CodeCli_DeepseekHarness_Status = 'code-cli:deepseek-harness:status',
   /** 立即拉当前状态（渲染层订阅缝 useCodeCliStatus 的初值通道；载荷同 Status）。 */
   CodeCli_DeepseekHarness_GetStatus = 'code-cli:deepseek-harness:get-status',
+  /** 数据重置（入参只收 keepSessions 布尔；路径全部主进程从 paths.ts 派生）。 */
+  CodeCli_DeepseekHarness_Reset = 'code-cli:deepseek-harness:reset',
+  /** 启动自愈开关：带 { enabled } 即写，省参即读（默认开）。 */
+  CodeCli_DeepseekHarness_AutoHeal = 'code-cli:deepseek-harness:auto-heal',
   CodeCli_HermesDashboard_Start = 'code-cli:hermes-dashboard:start',
   CodeCli_HermesDashboard_Stop = 'code-cli:hermes-dashboard:stop',
   /** 主 → 渲染状态广播（同 DeepseekHarness_Status 语义）。 */

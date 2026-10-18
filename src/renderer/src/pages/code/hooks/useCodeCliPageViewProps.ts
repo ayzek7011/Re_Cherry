@@ -357,6 +357,13 @@ export function useCodeCliPageViewProps(
           versionCard: {
             visible: true,
             canLaunch,
+            // 自愈开关与数据重置入口只属于编码助手卡（其余工具的 versionCard 不带这两项）。
+            ...(selectedCliTool === CodeCli.DEEPSEEK_HARNESS
+              ? {
+                  autoHeal: { enabled: deepSeekHarness.autoHeal, onToggle: deepSeekHarness.onToggleAutoHeal },
+                  onResetData: deepSeekHarness.onResetData
+                }
+              : {}),
             launching:
               launchDialog.launching ||
               deepSeekHarness.launching ||

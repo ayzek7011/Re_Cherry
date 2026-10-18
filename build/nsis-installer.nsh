@@ -170,3 +170,33 @@
     Pop $1
     Pop $0
 !macroend
+
+; ---------------------------------------------------------------------------
+; 卸载语义（fork）：登记的数据目录来自主进程写入的注册表值（src/main/utils/init.ts）。
+; 默认只卸程序、数据保留（重装原样恢复）；用户确认才删数据，并连带清掉数据目录登记
+; 指针（~\.re_cherry），杜绝"卸了重装上一世诈尸"。异常短的登记值不删（防手改注册表
+; 把路径指向盘根）。
+; 写法约束（真机教训）：MessageBox 的跳转标签与 LogicLib 的 ${If} 块混用时，
+; NSIS 3.0.4.1 报 "could not resolve label"。故整段用纯经典跳转，标签全部平铺在
+; 卸载段顶层，不进任何 ${If} 块。
+; ---------------------------------------------------------------------------
+!macro customUnInstall
+  ReadRegStr $R0 HKCU "Software\Re_Cherry" "DataPath"
+  StrCmp $R0 "" re_cherry_done
+  StrLen $R1 $R0
+  IntCmp $R1 7 re_cherry_short re_cherry_short re_cherry_ask
+re_cherry_short:
+  DeleteRegValue HKCU "Software\Re_Cherry" "DataPath"
+  Goto re_cherry_done
+re_cherry_ask:
+  MessageBox MB_YESNO|MB_ICONQUESTION \
+    "是否同时删除 Re_Cherry 的全部应用数据？$\r$\n$\r$\n包含：聊天记录、编码助手（CodeMate）数据与全部设置。$\r$\n位置：$R0$\r$\n$\r$\n选择「否」仅卸载程序，数据保留，重装后原样恢复。" \
+    IDNO re_cherry_keep
+  RMDir /r "$R0"
+  RMDir /r "$PROFILE\.re_cherry"
+  DeleteRegKey HKCU "Software\Re_Cherry"
+  Goto re_cherry_done
+re_cherry_keep:
+  DeleteRegValue HKCU "Software\Re_Cherry" "DataPath"
+re_cherry_done:
+!macroend

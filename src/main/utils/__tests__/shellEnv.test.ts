@@ -10,6 +10,7 @@
 import fsp from 'node:fs/promises'
 import path from 'node:path'
 
+import type * as ElectronModule from 'electron'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 // vi.mock 的工厂会被提升到 import 之前，故共享变量必须经 vi.hoisted 声明。
@@ -18,7 +19,7 @@ const { state } = vi.hoisted(() => ({ state: { root: '' } }))
 // 把 Electron 的 userData 指向临时夹具：受管运行时根 = <fixture>/Data/CodeMate/runtime/node。
 // setupFiles（tests/main.setup.ts）已 mock 过 electron，这里覆盖 getPath 以改根。
 vi.mock('electron', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('electron')>()
+  const actual = await importOriginal<typeof ElectronModule>()
   return {
     ...actual,
     app: {

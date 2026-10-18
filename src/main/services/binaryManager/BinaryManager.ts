@@ -12,7 +12,7 @@ import path from 'node:path'
 
 import { loggerService } from '@logger'
 import { isWin } from '@main/constant'
-import { probeBinaryDetailed, probeBinary, probeSystemPath } from '@main/services/codeCli/resolveBinary'
+import { probeBinary, probeBinaryDetailed, probeSystemPath } from '@main/services/codeCli/resolveBinary'
 import {
   cacheRoot,
   codeMateRuntimeRoot,

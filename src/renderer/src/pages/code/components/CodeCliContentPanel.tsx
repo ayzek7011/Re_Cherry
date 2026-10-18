@@ -30,6 +30,9 @@ interface CodeCliContentPanelProps {
     running: boolean
     stopping: boolean
     upgradeDisabled: boolean
+    /** 仅编码助手卡有值（启动自愈开关 + 数据重置入口）。 */
+    autoHeal?: { enabled: boolean; onToggle: (enabled: boolean) => void | Promise<void> }
+    onResetData?: (keepSessions: boolean) => void | Promise<unknown>
   }
   installingTools: Set<string>
   upgradingTools: Set<string>
@@ -130,6 +133,8 @@ export const CodeCliContentPanel: FC<CodeCliContentPanelProps> = ({
             onLaunch={onLaunch}
             onStop={onStop}
             onOpenDashboard={onOpenDashboard}
+            onResetData={versionCard.onResetData}
+            autoHeal={versionCard.autoHeal}
             canLaunch={versionCard.canLaunch}
             launching={versionCard.launching}
             running={versionCard.running}

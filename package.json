@@ -1,12 +1,12 @@
 {
   "name": "Re_Cherry",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "private": true,
   "description": "A personalized AI assistant forked from Cherry Studio.",
   "desktopName": "Re_Cherry.desktop",
   "main": "./out/main/index.js",
   "author": "Re_Cherry",
-  "homepage": "https://github.com/Ayzek810/Re_Cherry",
+  "homepage": "https://github.com/ayzek7011/Re_Cherry",
   "license": "AGPL-3.0",
   "engines": {
     "node": ">=24.11.1"

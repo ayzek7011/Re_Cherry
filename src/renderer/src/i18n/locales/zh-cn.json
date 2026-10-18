@@ -706,6 +706,22 @@
     "search_provider_placeholder": "搜索服务商…",
     "select_folder": "选择文件夹",
     "select_provider_before_launch": "请选择一个服务商后启动 {{toolName}}",
+    "mate": {
+      "auto_heal": {
+        "help": "启动失败时，按启动审计点名可逆停用肇事插件并重试一次；插件保留安装，升级后在插件市场重新勾选。",
+        "label": "启动自愈"
+      },
+      "reset": {
+        "button": "重置数据",
+        "confirm_button": "重置",
+        "content": "将停止编码助手并清空其数据目录：已装的社区插件、凭证与其设置；会话按下方选项保留或删除。不影响应用自身的聊天数据。",
+        "failed": "重置 CodeMate 数据失败",
+        "keep_sessions": "保留会话",
+        "remove_sessions": "同时删除会话",
+        "success": "CodeMate 数据已重置",
+        "title": "重置 CodeMate 数据"
+      }
+    },
     "select_provider_model": "请先选择服务商和模型",
     "select_tool_to_start": "从左侧选择一个 CLI 工具开始配置",
     "stop": "停止",

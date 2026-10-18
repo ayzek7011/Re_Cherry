@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process'
 import * as fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -22,30 +23,43 @@ function getConfigDir() {
 }
 
 export function initAppDataDir() {
-  const appDataPath = getAppDataPathFromConfig()
-  if (appDataPath) {
-    app.setPath('userData', appDataPath)
+  const registered = getRegisteredAppDataPath()
+  if (registered.status === 'ok' && registered.path) {
+    app.setPath('userData', registered.path)
+    recordDataPathForUninstaller(registered.path)
     return
+  }
+  if (registered.status === 'missing' && registered.path) {
+    // 登记的数据目录不可用：默认目录里可能躺着上一世的数据（真机：Roaming 残影），
+    // 回落会让旧聊天记录"诈尸"。只留证据不改行为——回落本身是既定语义。
+    process.stderr.write(
+      `[init] registered data directory is unavailable, falling back to the default location: ${registered.path}\n`
+    )
   }
 
   if (isPortable) {
     const portableDir = process.env.PORTABLE_EXECUTABLE_DIR
-    app.setPath('userData', path.join(portableDir || app.getPath('exe'), 'data'))
+    const portableDataPath = path.join(portableDir || app.getPath('exe'), 'data')
+    app.setPath('userData', portableDataPath)
+    recordDataPathForUninstaller(portableDataPath)
     return
   }
+  recordDataPathForUninstaller(app.getPath('userData'))
 }
 
-function getAppDataPathFromConfig() {
+type RegisteredAppDataPath = { status: 'none' } | { status: 'missing'; path: string } | { status: 'ok'; path: string }
+
+function getRegisteredAppDataPath(): RegisteredAppDataPath {
   try {
     const configPath = path.join(getConfigDir(), 'config.json')
     if (!fs.existsSync(configPath)) {
-      return null
+      return { status: 'none' }
     }
 
     const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
 
     if (!config.appDataPath) {
-      return null
+      return { status: 'none' }
     }
 
     let executablePath = app.getPath('exe')
@@ -72,12 +86,36 @@ function getAppDataPathFromConfig() {
     }
 
     if (appDataPath && fs.existsSync(appDataPath) && hasWritePermission(appDataPath)) {
-      return appDataPath
+      return { status: 'ok', path: appDataPath }
+    }
+    if (appDataPath) {
+      return { status: 'missing', path: appDataPath }
     }
 
-    return null
+    return { status: 'none' }
   } catch (error) {
-    return null
+    return { status: 'none' }
+  }
+}
+
+/**
+ * 把最终 userData 落点登记进注册表，NSIS 卸载器据此提供"同时删除应用数据"。
+ * 只在打包版跑（bootstrap 门）；失败只留 stderr 证据——注册表是卸载器的便利，
+ * 不是正确性依赖。
+ */
+function recordDataPathForUninstaller(userDataPath: string) {
+  if (process.platform !== 'win32') return
+  try {
+    const child = spawn(
+      'reg',
+      ['add', 'HKCU\\Software\\Re_Cherry', '/v', 'DataPath', '/t', 'REG_SZ', '/d', userDataPath, '/f'],
+      { windowsHide: true, stdio: 'ignore' }
+    )
+    child.on('error', () => {
+      process.stderr.write('[init] could not record the data path for the uninstaller\n')
+    })
+  } catch {
+    process.stderr.write('[init] could not record the data path for the uninstaller\n')
   }
 }
 

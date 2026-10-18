@@ -67,3 +67,8 @@ export function pythonRuntimeDir(version: string): string {
 export function cacheRoot(): string {
   return path.join(codeMateRoot(), 'cache')
 }
+
+/** 换代记录：上次成功就绪的 dsh 版本（启动预检的对照；只由 DeepSeekHarnessService 读写）。 */
+export function harnessGenerationRecord(): string {
+  return path.join(codeMateRoot(), 'harness-generation.json')
+}

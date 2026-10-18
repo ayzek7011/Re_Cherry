@@ -706,6 +706,22 @@
     "search_provider_placeholder": "Search providers…",
     "select_folder": "Select Folder",
     "select_provider_before_launch": "Select a provider before launching {{toolName}}",
+    "mate": {
+      "auto_heal": {
+        "help": "On launch failure, disable the community bundle the startup audit names and retry once. The bundle stays installed; re-enable it in the plugin market after upgrading it.",
+        "label": "Startup self-healing"
+      },
+      "reset": {
+        "button": "Reset Data",
+        "confirm_button": "Reset",
+        "content": "This stops the coding assistant and wipes its data directory: installed community bundles, credentials, and its settings. Sessions follow the option below. The app's own chat data is not touched.",
+        "failed": "Failed to reset CodeMate data",
+        "keep_sessions": "Keep sessions",
+        "remove_sessions": "Remove sessions too",
+        "success": "CodeMate data reset",
+        "title": "Reset CodeMate Data"
+      }
+    },
     "select_provider_model": "Please select a provider and model first",
     "select_tool_to_start": "Select a CLI tool from the left to start configuring",
     "stop": "Stop",

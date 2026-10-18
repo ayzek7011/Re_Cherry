@@ -189,12 +189,12 @@ async function ensureLanguageAndThemeLoaded(
       if (registrations.length === 0) {
         throw new Error(`Unknown theme: ${theme}`)
       }
-      await highlighter.loadTheme(registrations[0] as unknown as Parameters<HighlighterCore['loadTheme']>[0])
+      await highlighter.loadTheme(registrations[0] as Parameters<HighlighterCore['loadTheme']>[0])
     } catch (error) {
       // 回退到 one-light
       logger.debug(`Worker: Failed to load theme '${theme}', falling back to 'one-light':`, error as Error)
       const fallback = await requestAsset('theme', 'one-light')
-      await highlighter.loadTheme(fallback[0] as unknown as Parameters<HighlighterCore['loadTheme']>[0])
+      await highlighter.loadTheme(fallback[0] as Parameters<HighlighterCore['loadTheme']>[0])
       actualTheme = 'one-light'
     }
   }

@@ -15,6 +15,7 @@ import path from 'node:path'
 import { loggerService } from '@logger'
 import { isWin } from '@main/constant'
 import type { KernelModelInput } from '@main/kernel/providers'
+import { managedToolBinDirs } from '@main/services/binaryManager/layout'
 import { crossPlatformSpawn, executeCommand, terminateProcessTree, waitForProcessExit } from '@main/utils/processRunner'
 import { getRawShellEnv, refreshShellEnv, withPathPrepend } from '@main/utils/shellEnv'
 import { IpcChannel } from '@shared/IpcChannel'
@@ -43,9 +44,26 @@ import {
   rollbackDeepSeekHarnessConfig,
   writeDeepSeekHarnessConfig
 } from './config'
-import { managedToolBinDirs } from '@main/services/binaryManager/layout'
 import { startGatewayForCodeMate } from './gatewayRuntime'
-import { cacheRoot, codeMateToolsRoot, deepSeekHarnessHome, deepSeekHarnessWorkspace, nodeRuntimeDir } from './paths'
+import {
+  collectCompositionRisks,
+  collectOfficialRowIds,
+  type DeepSeekHarnessStartupFailure,
+  disableBundleSelection,
+  type HarnessAuditIo,
+  locateCulpritBundles,
+  parseStartupAudit,
+  type StartupAuditEntry
+} from './harnessStartupAudit'
+import {
+  cacheRoot,
+  codeMateToolsRoot,
+  deepSeekHarnessHome,
+  deepSeekHarnessWorkspace,
+  harnessGenerationRecord,
+  nodeRuntimeDir
+} from './paths'
+import { type HarnessResetIo,resetHarnessData } from './resetHarnessData'
 
 const logger = loggerService.withContext('DeepSeekHarnessService')
 
@@ -59,6 +77,8 @@ const DIAGNOSTIC_LIMIT = 2000
 const GATEWAY_ROUTE = 'cherry-studio-codemate-gateway'
 const GATEWAY_CREDENTIAL_REF = 'CHERRY_STUDIO_CODEMATE_GATEWAY_API_KEY'
 const MANAGED_CREDENTIAL_ENV = /^CHERRY_STUDIO_CODEMATE_(?:[A-F0-9]{12}|GATEWAY)_API_KEY$/i
+// harness 由 `dsh web` 子命令拉起，组合层固定在 profiles/web（真机 configurationPath 实证）。
+const HARNESS_PROFILE_DIR = 'web'
 // registry 钉 npmmirror，harness 内 dshmarket 的 pnpm/npm 子进程继承。
 // 常量单点到 binaryManager/registry.ts（原为"与 BinaryManager 同值"的复制件，
 // 复制件正是会漂移的那种东西——一处改了另一处不改，市场抓包与版本解析就走两个源）。
@@ -198,6 +218,9 @@ class DeepSeekHarnessService {
           if (startupAbortController.signal.aborted) {
             throw new Error('DeepSeek Harness startup was cancelled')
           }
+          // 换代预检（只宣告，不改装）：核心换代后社区组合未经本代验证——三代同构的组装
+          // 失败全部源于此（旧 pin 的补丁携带上一代契约）。对照记录只在启动成功后写入。
+          const generation = await this.announceGenerationDrift(runtime)
           // 启动前对齐插件市场基线。dshmarket 不是官方包（只是 profile 里的一个
           // 普通依赖），核心升级后它不会跟着走——旧版市场与本代核心不兼容正是"插件市场
           // 不可用"的根因（真机反馈）。此处 Harness 已停，是唯一能安全替换共享树包的时机。
@@ -211,15 +234,33 @@ class DeepSeekHarnessService {
           if (startupAbortController.signal.aborted) {
             throw new Error('DeepSeek Harness startup was cancelled')
           }
-          const url = await this.spawnAndWaitForReady(
-            runtime,
-            projection,
-            input.permissionMode,
-            startupAbortController.signal
-          )
+          let url: string
+          try {
+            url = await this.spawnAndWaitForReady(
+              runtime,
+              projection,
+              input.permissionMode,
+              startupAbortController.signal
+            )
+          } catch (launchError) {
+            // 启动失败自愈：审计点名 → 可逆停用肇事组合层 → 只重试一次。再失败走原失败
+            // 路径（状态 error + 完整诊断），绝不循环重试。
+            const disabled = await this.tryAutoDisableBrokenBundle(launchError)
+            if (disabled === undefined || startupAbortController.signal.aborted) throw launchError
+            this.setStatus('starting')
+            url = await this.spawnAndWaitForReady(
+              runtime,
+              projection,
+              input.permissionMode,
+              startupAbortController.signal
+            )
+            logger.warn(`DeepSeek Harness started after self-heal (disabled: ${disabled})`)
+          }
           if (!this.child || this.child.exitCode !== null || this.child.signalCode !== null) {
             throw new Error('DeepSeek Harness exited immediately after becoming ready')
           }
+          // 就绪即转正：记录本代版本，下次启动的换代预检才有对照。
+          await this.recordGeneration(generation)
           this.url = url
           this.setStatus('running')
           this.runningPermissionMode = input.permissionMode
@@ -431,18 +472,7 @@ class DeepSeekHarnessService {
     // node 先加载引导入口注册解析回退钩子（宿主包失败 → 以 dsh 安装树为父重试），再
     // import 真正的 dsh 入口并调用 runCli()。附带获得子进程 windowsHide 修复（#233）。
     // 入口文件缺失时退回直启（兼容 0.1.5 树）。
-    const appRoot = app.getAppPath().replace('app.asar', 'app.asar.unpacked')
-    const hostEntry = path.join(appRoot, 'resources', 'codemate', 'host', 'harness-node-entry.mjs')
-    const dshEntry = path.join(codeMateToolsRoot(), 'dsh', 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
-    const hostEntryReady =
-      (await fs.access(hostEntry).then(
-        () => true,
-        () => false
-      )) &&
-      (await fs.access(dshEntry).then(
-        () => true,
-        () => false
-      ))
+    const { hostEntry, dshEntry, hostEntryReady } = await resolveHostEntryPaths()
     const nodeBin = path.join(nodeBinDir, isWin ? 'node.exe' : 'node')
     const spawnFile = hostEntryReady ? nodeBin : runtime.path
     const spawnArgs = hostEntryReady
@@ -471,6 +501,167 @@ class DeepSeekHarnessService {
     } catch (error) {
       throw error instanceof Error ? error : new Error('DeepSeek Harness failed during startup')
     }
+  }
+
+  /**
+   * 换代预检（只宣告，不改装）：对照"上次成功就绪的 dsh 版本"与当前版本，变化则落
+   * 一条可查证据并扫描组合风险清单。返回当前 dsh 版本供 recordGeneration 复用；
+   * 探不到版本就静默降级（预检不是正确性依赖）。
+   */
+  private async announceGenerationDrift(runtime: DeepSeekHarnessRuntime): Promise<string | undefined> {
+    try {
+      const { dshEntry, hostEntryReady } = await resolveHostEntryPaths()
+      const currentVersion = hostEntryReady ? await readManagedDshVersion(dshEntry) : await readDshVersion(runtime.path)
+      if (!currentVersion) return undefined
+      const previousText = await harnessAuditIo.readText(harnessGenerationRecord())
+      let previousVersion: string | undefined
+      if (previousText) {
+        try {
+          previousVersion = (JSON.parse(previousText) as { dshVersion?: string }).dshVersion
+        } catch {
+          // 记录损坏按无记录处理；下次成功启动会重写。
+        }
+      }
+      if (previousVersion && previousVersion !== currentVersion) {
+        logger.warn(
+          'DeepSeek Harness core generation changed; the community composition was not validated for this generation',
+          { from: previousVersion, to: currentVersion }
+        )
+        await this.logCompositionRisks()
+      }
+      return currentVersion
+    } catch (error) {
+      logger.warn('DeepSeek Harness generation precheck failed; ignoring', error as Error)
+      return undefined
+    }
+  }
+
+  /** 组合风险清单：社区补丁凡覆盖官方行或声明注入的，逐条落日志（只宣告，不拦截）。 */
+  private async logCompositionRisks(): Promise<void> {
+    const profileRoot = path.join(deepSeekHarnessHome(), 'profiles', HARNESS_PROFILE_DIR)
+    const toolsNodeModules = path.join(codeMateToolsRoot(), 'dsh', 'node_modules')
+    const officialRowIds = await collectOfficialRowIds(
+      [
+        path.join(toolsNodeModules, '@deepseek-ai', 'dsh-base'),
+        path.join(toolsNodeModules, '@deepseek-ai', 'dsh-web-app')
+      ],
+      harnessAuditIo
+    )
+    const risks = await collectCompositionRisks(profileRoot, officialRowIds, harnessAuditIo)
+    for (const risk of risks) {
+      logger.warn(
+        'DeepSeek Harness composition risk: community bundle patch re-targets official rows or injects services',
+        {
+          bundle: risk.packageName,
+          retargeted: risk.retargetedOfficialIds,
+          injects: risk.injectedServices,
+          patch: risk.patchFile
+        }
+      )
+    }
+  }
+
+  /**
+   * 启动失败自愈：把审计里 required 行卡住的服务反查到肇事社区补丁，经组合层选择态
+   * 可逆停用（依赖保留，仅取消选择——与官方 setBundleEnabled 同一落点），返回被停用
+   * 的包名。只治"补丁把 required 行钉死在本代不存在的服务上"这一类死法；审计缺失 /
+   * 只有可选行在等 / 找不到肇事补丁，一律返回 undefined，错误原样上抛。
+   */
+  private async tryAutoDisableBrokenBundle(error: unknown): Promise<string | undefined> {
+    const audit = (error as { startupAudit?: StartupAuditEntry[] }).startupAudit
+    if (!audit || audit.length === 0) return undefined
+    if (!(await this.readAutoHealEnabled())) return undefined
+    const required = audit.filter((entry) => entry.required)
+    if (required.length === 0) return undefined
+    const requiredIds = new Set(required.map((entry) => entry.pluginId))
+    const requiredMissing = new Set(required.flatMap((entry) => entry.missing))
+    const profileRoot = path.join(deepSeekHarnessHome(), 'profiles', HARNESS_PROFILE_DIR)
+    const culprits = (await locateCulpritBundles(profileRoot, audit, harnessAuditIo)).filter(
+      (culprit) =>
+        culprit.retargeted.some((id) => requiredIds.has(id)) ||
+        culprit.injectedMissing.some((service) => requiredMissing.has(service))
+    )
+    if (culprits.length === 0) return undefined
+    const disabled: string[] = []
+    for (const culprit of culprits) {
+      if (!(await disableBundleSelection(profileRoot, culprit.packageName, harnessAuditIo))) continue
+      disabled.push(culprit.packageName)
+      logger.warn('DeepSeek Harness startup self-heal: disabled the implicated community bundle', {
+        bundle: culprit.packageName,
+        retargeted: culprit.retargeted,
+        missingServices: culprit.injectedMissing,
+        patch: culprit.patchFile,
+        recovery: 're-enable the bundle in the plugin market after upgrading it'
+      })
+    }
+    return disabled.length > 0 ? disabled.join(', ') : undefined
+  }
+
+  /** 就绪即转正：记录本代版本，保留已有的自愈开关偏好。写失败只留日志（fire-and-forget 也要有痕迹）。 */
+  private async recordGeneration(version: string | undefined): Promise<void> {
+    if (!version) return
+    try {
+      const previous = await harnessAuditIo.readText(harnessGenerationRecord())
+      let autoHeal: boolean | undefined
+      if (previous) {
+        try {
+          autoHeal = (JSON.parse(previous) as { autoHeal?: boolean }).autoHeal
+        } catch {
+          // 损坏记录按无偏好处理。
+        }
+      }
+      const payload: { dshVersion: string; recordedAt: string; autoHeal?: boolean } = {
+        dshVersion: version,
+        recordedAt: new Date().toISOString()
+      }
+      if (autoHeal !== undefined) payload.autoHeal = autoHeal
+      await harnessAuditIo.writeText(harnessGenerationRecord(), `${JSON.stringify(payload, null, 2)}\n`)
+    } catch (error) {
+      logger.warn('Failed to record the DeepSeek Harness generation marker', error as Error)
+    }
+  }
+
+  /** 自愈开关读取（缺省/损坏记录 = 开）。重置编码助手后随目录回到默认值。 */
+  private async readAutoHealEnabled(): Promise<boolean> {
+    const text = await harnessAuditIo.readText(harnessGenerationRecord())
+    if (!text) return true
+    try {
+      return (JSON.parse(text) as { autoHeal?: boolean }).autoHeal !== false
+    } catch {
+      return true
+    }
+  }
+
+  async getAutoHealEnabled(): Promise<boolean> {
+    return this.readAutoHealEnabled()
+  }
+
+  async setAutoHealEnabled(enabled: boolean): Promise<boolean> {
+    const recordFile = harnessGenerationRecord()
+    let state: { dshVersion?: string; recordedAt?: string; autoHeal?: boolean } = {}
+    const previous = await harnessAuditIo.readText(recordFile)
+    if (previous) {
+      try {
+        state = JSON.parse(previous) as typeof state
+      } catch {
+        // 损坏记录重建。
+      }
+    }
+    state.autoHeal = enabled
+    state.recordedAt = state.recordedAt ?? new Date().toISOString()
+    await harnessAuditIo.writeText(recordFile, `${JSON.stringify(state, null, 2)}\n`)
+    logger.info(`code-mate: harness startup self-heal ${enabled ? 'enabled' : 'disabled'}`)
+    return enabled
+  }
+
+  /**
+   * 重置编码助手数据：停 harness → 删 home\dsh（可选保留 sessions）。
+   * 路径全部由 paths.ts 派生，渲染层只传布尔；失败如实上抛（ipc 层包成 Result）。
+   */
+  async resetData(keepSessions: boolean): Promise<void> {
+    await this.stop()
+    await resetHarnessData(deepSeekHarnessHome(), keepSessions, harnessResetIo)
+    logger.warn(`code-mate: harness data reset (keepSessions=${String(keepSessions)})`)
   }
 
   private handleChildTermination(child: ChildProcess, code: number | null, signal: NodeJS.Signals | null): void {
@@ -503,6 +694,61 @@ class DeepSeekHarnessService {
       throw new Error('DeepSeek Harness did not exit after forced termination')
     }
   }
+}
+
+/** 宿主引导入口与受管 dsh 入口（spawn 与换代预检共用；入口缺失时退回直启）。 */
+async function resolveHostEntryPaths(): Promise<{ hostEntry: string; dshEntry: string; hostEntryReady: boolean }> {
+  const appRoot = app.getAppPath().replace('app.asar', 'app.asar.unpacked')
+  const hostEntry = path.join(appRoot, 'resources', 'codemate', 'host', 'harness-node-entry.mjs')
+  const dshEntry = path.join(codeMateToolsRoot(), 'dsh', 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
+  const hostEntryReady =
+    (await fs.access(hostEntry).then(
+      () => true,
+      () => false
+    )) &&
+    (await fs.access(dshEntry).then(
+      () => true,
+      () => false
+    ))
+  return { hostEntry, dshEntry, hostEntryReady }
+}
+
+/** 受管 dsh 树的版本：包清单在 lib/bin.js 两级之上。探不到返回 undefined（预检降级）。 */
+async function readManagedDshVersion(dshEntry: string): Promise<string | undefined> {
+  const manifestFile = path.join(path.dirname(path.dirname(dshEntry)), 'package.json')
+  try {
+    const manifest = JSON.parse(await fs.readFile(manifestFile, 'utf8')) as { version?: string }
+    return typeof manifest.version === 'string' ? manifest.version : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** 运行侧文件端口（测试注入假件，这里给真件）。写走同目录临时文件 + rename，避免半截 package.json。 */
+const harnessAuditIo: HarnessAuditIo = {
+  joinPath: (...parts) => path.join(...parts),
+  readText: async (file) => fs.readFile(file, 'utf8').catch(() => undefined),
+  writeText: async (file, contents) => {
+    const tempFile = `${file}.tmp-${process.pid}`
+    await fs.writeFile(tempFile, contents, 'utf8')
+    await fs.rename(tempFile, file)
+  }
+}
+
+/** 重置的文件端口真件：removeDir 递归强删（missing-ok），ensureDir 递归建。 */
+const harnessResetIo: HarnessResetIo = {
+  joinPath: (...parts) => path.join(...parts),
+  parentDir: (file) => path.dirname(file),
+  exists: async (target) =>
+    fs.access(target).then(
+      () => true,
+      () => false
+    ),
+  removeDir: async (target) => fs.rm(target, { recursive: true, force: true }),
+  ensureDir: async (target) => {
+    await fs.mkdir(target, { recursive: true })
+  },
+  rename: (from, to) => fs.rename(from, to)
 }
 
 function appendBounded(current: string, chunk: Buffer | string): string {
@@ -609,8 +855,14 @@ function waitForReady(child: ChildProcess, secret: string, signal: AbortSignal):
       if (settled) return
       settled = true
       cleanup()
-      const diagnostic = sanitizeDiagnostic([error.message, stderr, stdout].filter(Boolean).join('\n'), secret)
-      reject(new Error(diagnostic || 'DeepSeek Harness failed during startup'))
+      // 审计表先于卫生化提取：sanitize 会把尾巴截到 2000 字符，表可能被栈帧挤掉。
+      const startupAudit = parseStartupAudit([stderr, stdout].filter(Boolean).join('\n'))
+      const failure: DeepSeekHarnessStartupFailure = new Error(
+        sanitizeDiagnostic([error.message, stderr, stdout].filter(Boolean).join('\n'), secret) ||
+          'DeepSeek Harness failed during startup'
+      )
+      if (startupAudit.length > 0) failure.startupAudit = startupAudit
+      reject(failure)
     }
     const onStdout = (chunk: Buffer) => {
       stdout = appendBounded(stdout, chunk)
