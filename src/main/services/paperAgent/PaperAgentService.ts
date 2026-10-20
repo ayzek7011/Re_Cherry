@@ -173,7 +173,6 @@ class PaperAgentService {
           this.setStatus('running', { force: true })
           return { success: true as const, url: this.url }
         }
-        if (this.child) await this.stopOwnedProcessLocked()
 
         const pythonBin = venvPython()
         if (!(await pathExists(pythonBin)) || !(await pathExists(path.join(toolDir(), VERSION_MARKER)))) {
@@ -195,6 +194,10 @@ class PaperAgentService {
         await fsp.mkdir(path.join(home, 'logs'), { recursive: true })
 
         try {
+          // Reaping a leftover child belongs inside the try so a failing stop is mapped to
+          // a failure Result, not thrown out of start()（hermes 同款；裸 reject 会被 handler
+          // 兜成语义错误的 startup_failed 且无状态广播）。
+          if (this.child) await this.stopOwnedProcessLocked()
           this.url = undefined
           this.setStatus('starting')
           const url = await this.spawnAndWaitForReady(pythonBin, home, startupAbortController.signal)
@@ -230,11 +233,17 @@ class PaperAgentService {
     for (const startup of this.startupAbortControllers) startup.abort()
     await this.operationMutex.runExclusive(async () => {
       const transitionBefore = this.statusTransitionId
-      await this.stopOwnedProcessLocked()
-      this.url = undefined
-      this.setStatus('stopped')
-      // A no-op stop (already stopped) still confirms the terminal state to the renderer.
-      if (this.statusTransitionId === transitionBefore) this.setStatus('stopped', { force: true })
+      try {
+        await this.stopOwnedProcessLocked()
+        this.url = undefined
+        this.setStatus('stopped')
+        // A no-op stop (already stopped) still confirms the terminal state to the renderer.
+        if (this.statusTransitionId === transitionBefore) this.setStatus('stopped', { force: true })
+      } catch (error) {
+        // stop 失败是故障态：先落 error 再上抛（与 hermes 同构——失败后状态不得停在 running）。
+        this.setStatus('error')
+        throw error
+      }
     })
   }
 
@@ -294,12 +303,19 @@ class PaperAgentService {
     const child = this.child
     if (!child) return
     this.stoppingChild = child
-    await terminateProcessTree(child, false, 'Paper-Agent')
-    if (await waitForProcessExit(child, GRACEFUL_STOP_TIMEOUT_MS)) return
+    try {
+      await terminateProcessTree(child, false, 'Paper-Agent')
+      if (await waitForProcessExit(child, GRACEFUL_STOP_TIMEOUT_MS)) return
 
-    await terminateProcessTree(child, true, 'Paper-Agent')
-    if (!(await waitForProcessExit(child, FORCE_STOP_TIMEOUT_MS))) {
-      throw new Error('Paper-Agent did not exit after forced termination')
+      await terminateProcessTree(child, true, 'Paper-Agent')
+      if (!(await waitForProcessExit(child, FORCE_STOP_TIMEOUT_MS))) {
+        throw new Error('Paper-Agent did not exit after forced termination')
+      }
+    } catch (error) {
+      // 清掉 stoppingChild 再上抛：否则该 child 真正退出时会被迟到回调当成受控停止分支
+      // 处理（hermes 同款清理）。
+      if (this.stoppingChild === child) this.stoppingChild = null
+      throw error
     }
   }
 }

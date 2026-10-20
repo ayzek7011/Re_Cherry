@@ -25,7 +25,11 @@ import { appUpdateService, parsePrefsPatch } from './services/AppUpdateService'
 import BackupManager from './services/BackupManager'
 import { binaryManager } from './services/binaryManager/BinaryManager'
 import { BINARY_TOOL_NAMES, type BinaryToolName, isBinaryToolName } from './services/binaryManager/presets'
-import { parseCliConfigReadInput, parseCliConfigWriteInput } from './services/codeCli/configPayload'
+import {
+  parseCliConfigReadInput,
+  parseCliConfigWriteInput,
+  parseDeepSeekHarnessStartInput
+} from './services/codeCli/configPayload'
 import { readCliConfigFiles, writeCliConfigFiles } from './services/codeCli/configWriter'
 import { configManager } from './services/ConfigManager'
 import { deepSeekHarnessService } from './services/deepSeekHarness/DeepSeekHarnessService'
@@ -842,8 +846,10 @@ export async function registerIpc(mainWindow: BrowserWindow, app: Electron.App) 
   )
 
   // 编码助手：受管 DeepSeek Harness Web UI 的生命周期（非内核通道 → 本文件）。
+  // start 入参必须过断言：mode 路由 + uniqueModelId 形状 + settings 归一（permissionMode
+  // 进子进程 env、agentPreset 写 settings.yaml，均为不可信边界面）。
   ipcMain.handle(IpcChannel.CodeCli_DeepseekHarness_Start, (_, input) =>
-    deepSeekHarnessService.start(input as Parameters<typeof deepSeekHarnessService.start>[0])
+    deepSeekHarnessService.start(parseDeepSeekHarnessStartInput(input))
   )
   // 修复：stop 原样透传 void → IPC 回 undefined → 渲染层读 result.success 炸
   // （hermes 侧同位 handler 是 {success} 包裹形状，此处对齐）。
@@ -1036,15 +1042,10 @@ export async function registerIpc(mainWindow: BrowserWindow, app: Electron.App) 
       }
     }
   })
-  // 立即拉当前运行态。fork 缝：publishRunningState 的载荷构造为私有，此处按其
-  // 语义（running && config.enabled && config.host === '0.0.0.0'）以公开查询面
-  // （isRunning/getCurrentConfig）等价重建；port 为配置端口（运行期即绑定端口）。
-  ipcMain.handle(IpcChannel.CodeCli_ApiGateway_GetStatus, () => {
-    const running = apiGatewayService.isRunning()
-    const config = apiGatewayService.getCurrentConfig()
-    const lanRunning = running && config.enabled && config.host === '0.0.0.0'
-    return { running, ...(lanRunning ? { lanRunning, port: config.port } : {}) }
-  })
+  // 立即拉当前运行态。载荷与状态广播共用同一构造（ApiGatewayService.getRunningState）——
+  // 此前 handler 按"running && enabled && host==='0.0.0.0'"语义重建、port 取配置端口，
+  // 与广播的键形状不一致，渲染层按键数浅比较会把同义载荷判为变化。
+  ipcMain.handle(IpcChannel.CodeCli_ApiGateway_GetStatus, () => apiGatewayService.getRunningState())
 
   // 网关配置读取——渲染层合成网关 provider（卡片/模型选择）与 hermes 配置草稿
   // （.env 的 CHERRY_HERMES_API_KEY）的数据源。apiKey 只读不生成（V2 语义：网关从未
@@ -1054,6 +1055,8 @@ export async function registerIpc(mainWindow: BrowserWindow, app: Electron.App) 
     return {
       host: config.host,
       port: config.port,
+      // enabled 供设置页的 LAN 开关回显（开关反映持久化意图，lanRunning 才是运行事实）。
+      enabled: config.enabled,
       apiKey: configManager.getApiGatewayApiKey() ?? null,
       running: apiGatewayService.isRunning()
     }

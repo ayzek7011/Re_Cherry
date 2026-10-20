@@ -148,14 +148,28 @@ class ApiGatewayService {
    * leak into the persisted `enabled` config; that is prevented on the renderer side, not by
    * faking this state.
    */
-  private publishRunningState(running: boolean): void {
+  /**
+   * 载荷构造单点：状态广播与 get-status 共用同一份（键形状恒一致——渲染层按键数浅比较
+   * 去重，两种形状会让同义载荷被判为变化）。`running` 由调用方给：广播路径携带触发时刻的
+   * 意图值，get-status 路径取 isRunning() 现值。
+   */
+  private buildRunningState(running: boolean): { running: boolean; lanRunning: boolean; port?: number } {
     const config = this.getCurrentConfig()
     const lanRunning = running && config.enabled && config.host === '0.0.0.0'
-    const payload = {
+    return {
       running,
       lanRunning,
       ...(lanRunning && this.apiGateway ? { port: this.apiGateway.getPort() } : {})
     }
+  }
+
+  /** get-status 通道的现值查询（与广播同一构造，IpcChannel 的"载荷同 Status 广播"自此成立）。 */
+  getRunningState(): { running: boolean; lanRunning: boolean; port?: number } {
+    return this.buildRunningState(this.isRunning())
+  }
+
+  private publishRunningState(running: boolean): void {
+    const payload = this.buildRunningState(running)
     try {
       for (const window of BrowserWindow.getAllWindows()) {
         if (!window.isDestroyed()) window.webContents.send(IpcChannel.CodeCli_ApiGateway_Status, payload)

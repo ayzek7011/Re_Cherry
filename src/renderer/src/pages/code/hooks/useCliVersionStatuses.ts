@@ -20,7 +20,11 @@ import { type BinaryToolSnapshot, interpretBinarySnapshot } from '../utils/binar
 
 const logger = loggerService.withContext('useCliVersionStatus')
 
-const buildStatus = (snapshot: BinaryToolSnapshot | undefined, latest?: string): VersionStatus => {
+const buildStatus = (
+  snapshot: BinaryToolSnapshot | undefined,
+  latest?: string,
+  latestUnknown?: boolean
+): VersionStatus => {
   const view = interpretBinarySnapshot(snapshot, { latest })
   return {
     installed: view.installed,
@@ -35,12 +39,16 @@ const buildStatus = (snapshot: BinaryToolSnapshot | undefined, latest?: string):
     ...(view.lastFailure !== undefined ? { lastFailure: view.lastFailure } : {}),
     // v1（W4-4）：主进程进行中的操作随快照下发——页面重挂载后靠它恢复"正在安装"。
     ...(view.operation !== undefined ? { operation: view.operation } : {}),
+    // （）：注册表型工具的"最新版"查询失败时如实标记——否则"没有更新"会冒充查询
+    // 结论，版本卡渲染出假的"已是最新"徽章（主进程侧同源语义：查不到就抛，不冒充）。
+    ...(latestUnknown ? { latestUnknown: true } : {}),
     canUpgrade: view.hasUpdate
   }
 }
 
 const SNAPSHOT_RETRY_MS = 2000
-const SNAPSHOT_MAX_ATTEMPTS = 5
+/** 重试封顶：读取失败永不冒充"未安装"，骨架保持到某次重试成功（或 onChanged 触发全量重拉）。 */
+const SNAPSHOT_RETRY_MAX_MS = 30_000
 
 export interface CliVersionStatusesState {
   statuses: Record<string, VersionStatus>
@@ -73,11 +81,14 @@ export const useCliVersionStatuses = (toolIds: readonly CodeCli[]): CliVersionSt
         })
       if (cancelled) return
       if (!snapshots) {
-        // Only an install/remove event re-runs this read, so without a retry a first
-        // attempt that races main-process readiness strands every tool for the session.
+        // 重试永不放弃、永不降级成"未安装"：读取失败渲染成确定的空结果是假陈述
+        // （装配点把空 statuses 显示为可点击的「安装」，等于诱导重装）。封顶退避
+        // 到 30s，onChanged 广播仍会立即触发全量重拉。
         attempts += 1
-        if (attempts < SNAPSHOT_MAX_ATTEMPTS) retryTimer = setTimeout(() => void refresh(), SNAPSHOT_RETRY_MS)
-        else setResolved(true)
+        retryTimer = setTimeout(
+          () => void refresh(),
+          Math.min(SNAPSHOT_RETRY_MAX_MS, SNAPSHOT_RETRY_MS * 2 ** (attempts - 1))
+        )
         return
       }
 
@@ -94,11 +105,19 @@ export const useCliVersionStatuses = (toolIds: readonly CodeCli[]): CliVersionSt
       // fork 缝①：V2 先读缓存（refresh=false）再按需强取（refresh=true）两段式；fork 的
       // latestVersions() 每次现查，收敛为一次调用。
       let latestVersions: Record<string, string | undefined> = {}
+      let latestQueryFailed = false
       if (hasAppliedCli) {
-        latestVersions = (await window.api.codeCli.binary.latestVersions().catch((error) => {
-          logger.error('Failed to get latest binary versions', error as Error)
-          return {}
-        })) as Record<string, string | undefined>
+        latestVersions = await window.api.codeCli.binary
+          .latestVersions()
+          .then((result) => {
+            latestQueryFailed = false
+            return result as Record<string, string | undefined>
+          })
+          .catch((error) => {
+            logger.error('Failed to get latest binary versions', error as Error)
+            latestQueryFailed = true
+            return {}
+          })
       }
       if (cancelled) return
 
@@ -107,7 +126,13 @@ export const useCliVersionStatuses = (toolIds: readonly CodeCli[]): CliVersionSt
         const binaryName = CODE_CLI_TOOL_PRESET_MAP[toolId].executable
         const latest = latestVersions[binaryName] ?? latestRef.current[toolId]
         latestRef.current[toolId] = latest
-        next[toolId] = buildStatus(snapshots[binaryName], latest)
+        // 查询失败只对"注册表型且已应用"的工具标 unknown——paper-agent（source 型）的
+        // 最新版本本来就不走这条通道，"未知"对它是常态而非失败。
+        const toolLatestUnknown =
+          latestQueryFailed &&
+          snapshots[binaryName]?.application === 'applied' &&
+          CODE_CLI_TOOL_PRESET_MAP[toolId].install !== 'source'
+        next[toolId] = buildStatus(snapshots[binaryName], latest, toolLatestUnknown)
       }
       setStatuses(next)
       setResolved(true)

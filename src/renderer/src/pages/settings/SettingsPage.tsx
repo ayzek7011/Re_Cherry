@@ -14,6 +14,7 @@ import {
   MonitorCog,
   Package,
   PictureInPicture2,
+  RadioTower,
   Settings2,
   Sparkles,
   Zap
@@ -46,6 +47,7 @@ import WebSearchSettings from './WebSearchSettings'
 const ProviderList = lazy(() => import('./ProviderSettings').then((module) => ({ default: module.ProviderList })))
 const DataSettings = lazy(() => import('./DataSettings/DataSettings'))
 const SkillsSettings = lazy(() => import('./SkillsSettings'))
+const ApiGatewaySettings = lazy(() => import('./ApiGatewaySettings'))
 
 /** 子页懒加载占位：骨架（内容区专属，导航保持可见；静默空白是最差失败形态）。 */
 const SettingsLoadingFallback: FC = () => (
@@ -101,6 +103,12 @@ const SettingsPage: FC = () => {
             <MenuItem className={isRoute('/settings/skills')}>
               <Sparkles size={18} />
               {t('settings.skills.title')}
+            </MenuItem>
+          </MenuItemLink>
+          <MenuItemLink to="/settings/api-gateway">
+            <MenuItem className={isRoute('/settings/api-gateway')}>
+              <RadioTower size={18} />
+              {t('settings.apiGateway.title')}
             </MenuItem>
           </MenuItemLink>
           <Divider />
@@ -166,6 +174,7 @@ const SettingsPage: FC = () => {
               <Route path="docprocess" element={<DocProcessSettings />} />
               <Route path="mcp/*" element={<MCPSettings />} />
               <Route path="skills" element={<SkillsSettings />} />
+              <Route path="api-gateway" element={<ApiGatewaySettings />} />
 
               <Route path="quickphrase" element={<QuickPhraseSettings />} />
               <Route path="usage" element={<UsageSettings />} />

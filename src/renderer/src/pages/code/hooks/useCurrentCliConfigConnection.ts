@@ -30,6 +30,14 @@ import type { ApiGatewayProviderBundle } from './useApiGatewayProvider'
 
 const logger = loggerService.withContext('useCurrentCliConfigConnection')
 
+/**
+ * 读失败必须是自己的第三态：`null` 的语义是「磁盘配置与当前服务商一致/无外来配置」——
+ * 把读取失败折叠进 null，就是把失败渲染成一次假成功。当前该值没有显示面消费
+ * （V2 的消费面随 dormant 的 LaunchDialog 被裁），但契约必须先诚实，未来任何读者
+ * 都不会把失败误读成"一致"。
+ */
+export type CurrentCliConfigConnection = CliConfigConnection | null | 'unreadable'
+
 // fork 缝①：V2 为 `const result = await dataApiService.get(`/providers/${providerId}/api-keys`);
 // return result?.keys ?? []`。
 async function readProviderApiKeys(providerId: string): Promise<ApiKeyEntry[]> {
@@ -48,11 +56,11 @@ export function useCurrentCliConfigConnection({
   currentProviderConfig?: CliProviderConfig | null
   apiGatewayProvider?: ApiGatewayProviderBundle | null
 }): {
-  connection: CliConfigConnection | null
+  connection: CurrentCliConfigConnection
   setConnection: (connection: CliConfigConnection | null) => void
   reload: () => void
 } {
-  const [currentCliConfigConnection, setCurrentCliConfigConnection] = useState<CliConfigConnection | null>(null)
+  const [currentCliConfigConnection, setCurrentCliConfigConnection] = useState<CurrentCliConfigConnection>(null)
   const [reloadRevision, setReloadRevision] = useState(0)
   const readGenerationRef = useRef(0)
   // fork 缝②：V2 为 `const { models } = useModels({ enabled: true })`。
@@ -112,7 +120,7 @@ export function useCurrentCliConfigConnection({
       )
     })().catch((error) => {
       logger.error('Failed to read current CLI config connection:', error as Error)
-      if (!cancelled && readGeneration === readGenerationRef.current) setCurrentCliConfigConnection(null)
+      if (!cancelled && readGeneration === readGenerationRef.current) setCurrentCliConfigConnection('unreadable')
     })
 
     return () => {

@@ -12,7 +12,12 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import { CLI_CONFIG_CONTENT_LIMIT, parseCliConfigReadInput, parseCliConfigWriteInput } from '../configPayload'
+import {
+  CLI_CONFIG_CONTENT_LIMIT,
+  parseCliConfigReadInput,
+  parseCliConfigWriteInput,
+  parseDeepSeekHarnessStartInput
+} from '../configPayload'
 
 describe('parseCliConfigReadInput', () => {
   it('accepts the route payload shape the renderer sends', () => {
@@ -85,5 +90,58 @@ describe('parseCliConfigWriteInput', () => {
         files: [{ target: 'hermes-env', content: 'x'.repeat(CLI_CONFIG_CONTENT_LIMIT + 1) }]
       })
     ).toThrow(/Invalid config content/)
+  })
+})
+
+describe('parseDeepSeekHarnessStartInput', () => {
+  const valid = {
+    mode: 'direct',
+    uniqueModelId: 'deepseek::deepseek-chat',
+    agentPreset: 'code',
+    permissionMode: 'workspace-write'
+  }
+
+  it('accepts the payload the renderer sends and normalizes settings', () => {
+    expect(parseDeepSeekHarnessStartInput(valid)).toEqual({
+      mode: 'direct',
+      uniqueModelId: 'deepseek::deepseek-chat',
+      agentPreset: 'code',
+      permissionMode: 'workspace-write'
+    })
+  })
+
+  it('fills unknown or missing settings with the defaults instead of passing them through', () => {
+    expect(parseDeepSeekHarnessStartInput({ mode: 'gateway', uniqueModelId: 'p::m' })).toEqual({
+      mode: 'gateway',
+      uniqueModelId: 'p::m',
+      agentPreset: 'inherit',
+      permissionMode: 'workspace-write'
+    })
+    expect(parseDeepSeekHarnessStartInput({ ...valid, agentPreset: 'not-a-preset', permissionMode: 42 })).toMatchObject(
+      { agentPreset: 'inherit', permissionMode: 'workspace-write' }
+    )
+  })
+
+  it('accepts a model id that itself contains single colons', () => {
+    expect(parseDeepSeekHarnessStartInput({ mode: 'gateway', uniqueModelId: 'p::openai:gpt-4o' })).toMatchObject({
+      uniqueModelId: 'p::openai:gpt-4o'
+    })
+  })
+
+  it('rejects a non-object payload', () => {
+    expect(() => parseDeepSeekHarnessStartInput(null)).toThrow(/expected an object/)
+    expect(() => parseDeepSeekHarnessStartInput('direct')).toThrow(/expected an object/)
+  })
+
+  it('rejects a mode outside the direct/gateway pair (an unknown mode silently routed as direct before)', () => {
+    expect(() => parseDeepSeekHarnessStartInput({ ...valid, mode: 'any' })).toThrow(/mode must be/)
+    expect(() => parseDeepSeekHarnessStartInput({ ...valid, mode: undefined })).toThrow(/mode must be/)
+  })
+
+  it('rejects a uniqueModelId without the :: separator (parseUniqueModelId would slice out garbage)', () => {
+    expect(() => parseDeepSeekHarnessStartInput({ ...valid, uniqueModelId: 'deepseek-chat' })).toThrow(
+      /uniqueModelId must be/
+    )
+    expect(() => parseDeepSeekHarnessStartInput({ ...valid, uniqueModelId: 7 })).toThrow(/uniqueModelId must be/)
   })
 })

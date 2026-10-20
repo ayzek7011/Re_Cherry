@@ -6,7 +6,7 @@
 //   ERR_PNPM_* 与"哪个包"总在末尾），不是开头的进度行；
 // - 超时 kill 并如实上抛（kill 后 close 事件仍会到达，由 settled 守卫保证只结算一次）。
 
-import { crossPlatformSpawn } from '@main/utils/processRunner'
+import { crossPlatformSpawn, killProcessTree } from '@main/utils/processRunner'
 
 /** 单条受管命令的默认超时预算（安装是分钟级；市场基线的 pnpm 安装同量级）。 */
 export const DEFAULT_COMMAND_TIMEOUT_MS = 15 * 60_000
@@ -73,7 +73,10 @@ export function runBoundedCommand(executable: string, args: string[], options: B
       emitLines('stderr', chunk.toString())
     })
     const timeout = setTimeout(() => {
-      child.kill()
+      // 杀树而非 child.kill()：cross-spawn 的 .cmd 走 cmd.exe 包装层，只杀直接子进程
+      // 会留下孤儿 node/pip 树继续持有文件锁（紧随的回滚/卸载撞占用）。与
+      // processRunner.executeCommand 的同款修复一致。
+      killProcessTree(child)
       settle(() => reject(new Error(`${options.label} timed out after ${timeoutMs}ms`)))
     }, timeoutMs)
     child.once('error', (error) => {

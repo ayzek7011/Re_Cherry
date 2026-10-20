@@ -68,8 +68,17 @@ export async function buildInPlace(targetDir: string, build: (dir: string) => Pr
   try {
     await build(targetDir)
   } catch (error) {
-    await removeTreeWithRetry(targetDir)
+    const cleared = await removeTreeWithRetry(targetDir)
     if (hadTarget) {
+      // 清理失败（残树仍被锁）时放回必撞 ENOTEMPTY——与其做注定失败的 rename 再把
+      // "恢复成功"含糊掉，不如直接把两个事实都讲清楚：本次构建失败、旧安装完整保留
+      // 在 .old-* 备份位，用户可手工取回或稍后重试（重试会再走一轮同样的交换）。
+      if (!cleared) {
+        throw new Error(
+          `The build failed and the partial result at ${targetDir} could not be cleared (locked?). ` +
+            `The previous installation is preserved at ${backupDir}; retry later or restore it manually.`
+        )
+      }
       try {
         await renameWithRetry(backupDir, targetDir)
       } catch (restoreError) {

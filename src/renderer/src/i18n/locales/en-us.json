@@ -671,6 +671,7 @@
     },
     "install_success": "Installation successful",
     "installing": "Installing…",
+    "auto_heal_failed": "Failed to update the self-heal switch",
     "latest": "Latest",
     "launch": {
       "error": "Launch failed, please try again",
@@ -678,6 +679,7 @@
       "title": "Launch {{tool}}",
       "validation_error": "Please complete all required fields: CLI tool, model, and working directory"
     },
+    "open_web_ui_failed": "Failed to open the Web UI",
     "launching": "Launching...",
     "model_providers": "Model Providers",
     "model_selection": "Model Selection",
@@ -3807,6 +3809,37 @@
       "uninstallFailed": "Failed to uninstall skill: {{id}}",
       "uninstallSuccess": "Skill uninstalled: {{name}}",
       "viewSource": "View Source"
+    },
+    "apiGateway": {
+      "address": {
+        "label": "Address"
+      },
+      "description": "Local unified gateway for the coding assistant (OpenAI/Anthropic compatible).",
+      "lan": {
+        "hint": "When enabled, devices on the LAN can reach the gateway through this machine's address. Applies on save; a running gateway converges as needed.",
+        "label": "LAN access",
+        "title": "LAN Access"
+      },
+      "operation_failed": "Operation failed",
+      "port": {
+        "hint": "Applies on save. A running gateway restarts automatically on the new port.",
+        "label": "Port",
+        "save": "Save",
+        "title": "Port"
+      },
+      "restart": {
+        "action": "Restart",
+        "label": "Restart Gateway"
+      },
+      "restarted": "Gateway restarted",
+      "saved": "Saved",
+      "status": {
+        "label": "Status",
+        "lan": "LAN :{{port}}",
+        "running": "Running",
+        "stopped": "Stopped"
+      },
+      "title": "Unified Gateway"
     },
     "theme": {
       "color_primary": "Primary Color",

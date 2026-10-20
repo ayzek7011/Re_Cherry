@@ -96,19 +96,23 @@ export const useCodeCli = (initialTool: CodeCli = DEFAULT_TOOL, onToolChange?: (
       partial: Pick<CliProviderConfig, 'modelId'> & Partial<CliProviderConfig>
     ): Promise<string> => {
       const toolId = selectedCliTool
-      const existing = getToolState(toolId, configsRef.current).providers[providerId]
-      const nextConfig = 'config' in partial ? partial.config : existing?.config
-      const next: CliProviderConfig = {
-        modelId: partial.modelId,
-        ...(nextConfig !== undefined ? { config: nextConfig } : {}),
-        ...(partial.sortIndex !== undefined || existing?.sortIndex !== undefined
-          ? { sortIndex: partial.sortIndex ?? existing?.sortIndex }
-          : {})
-      }
-      await patchToolState(toolId, (prev) => ({
-        ...prev,
-        providers: { ...prev.providers, [providerId]: next }
-      }))
+      await patchToolState(toolId, (prev) => {
+        // existing 必须在 patch 回调（队列串行点）内读取：队列外读 configsRef 会拿到
+        // "已入队未执行"的旧值，其 config/sortIndex 随后被本次写入覆盖（丢更新）。
+        const existing = prev.providers[providerId]
+        const nextConfig = 'config' in partial ? partial.config : existing?.config
+        const next: CliProviderConfig = {
+          modelId: partial.modelId,
+          ...(nextConfig !== undefined ? { config: nextConfig } : {}),
+          ...(partial.sortIndex !== undefined || existing?.sortIndex !== undefined
+            ? { sortIndex: partial.sortIndex ?? existing?.sortIndex }
+            : {})
+        }
+        return {
+          ...prev,
+          providers: { ...prev.providers, [providerId]: next }
+        }
+      })
       logger.info('Upserted CLI provider config', { toolId, providerId })
       return providerId
     },

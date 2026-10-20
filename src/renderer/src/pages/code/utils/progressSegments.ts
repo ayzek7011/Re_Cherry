@@ -12,11 +12,13 @@ export type SegmentFill = number | null
 
 /**
  * 与载荷一致的段序钳制：段数与段序都可能来自主进程的越界值（版本错配、手改载荷），
- * 渲染层不因它画出负宽或空条。
+ * 渲染层不因它画出负宽或空条——**有限值一律钳制回段内**（越界不是缺省的理由，
+ * 单测钉住 `{index:-2,total:6}→{1,6}` 这一条）。NaN 防线：Math.max/min 对 NaN 透传
+ * （NaN 会沿着 1 起的整条算术产出 NaN 百分比），非有限值按缺省段 `{1,1}` 处理。
  */
 export function clampStage(stage: InstallStagePosition | undefined): { index: number; total: number } {
-  const total = stage ? Math.max(1, Math.floor(stage.total)) : 1
-  const index = stage ? Math.min(total, Math.max(1, Math.floor(stage.index))) : 1
+  const total = stage && Number.isFinite(stage.total) ? Math.max(1, Math.floor(stage.total)) : 1
+  const index = stage && Number.isFinite(stage.index) ? Math.min(total, Math.max(1, Math.floor(stage.index))) : 1
   return { index, total }
 }
 

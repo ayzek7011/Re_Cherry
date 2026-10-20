@@ -14,6 +14,8 @@ class FakeIo {
   readonly ops: Array<{ op: string; path: string; to?: string }> = []
   /** removeDir 对这些路径抛错（模拟删除失败）。 */
   readonly failRemove = new Set<string>()
+  /** rename 对这些源路径抛错（模拟恢复失败）。 */
+  readonly failRename = new Set<string>()
 
   joinPath = (...parts: string[]): string => parts.join('/')
   parentDir = (file: string): string => file.split('/').slice(0, -1).join('/')
@@ -27,6 +29,7 @@ class FakeIo {
     this.dirs.add(path)
   }
   rename = async (from: string, to: string): Promise<void> => {
+    if (this.failRename.has(from)) throw new Error(`EPERM (rename): ${from}`)
     if (!this.dirs.has(from)) throw new Error(`ENOENT (rename): ${from}`)
     // 真实 fs 的 rename 会整树搬——假件也要重映射全部子孙条目，否则删除阶段会把
     // 假件里留在旧路径的子目录一并清掉，制造出生产代码没有的假失败。
@@ -95,5 +98,51 @@ describe('resetHarnessData', () => {
     await expect(resetHarnessData(HOME, true, io)).resolves.toBe(true)
     expect(io.dirs.has(HOME)).toBe(false)
     expect(io.ops.filter((op) => op.op === 'mv')).toEqual([])
+  })
+
+  const STASH = 'data/CodeMate/home/dsh.reset-stash'
+
+  function seedStash(io: FakeIo): void {
+    // 上次重置「删除成功、搬回失败」的残局：home 没了，会话只存在 stash 里。
+    io.dirs.add('data/CodeMate/home')
+    io.dirs.add(STASH)
+    io.dirs.add(`${STASH}/--E-Workspace-Re_Cherry--`)
+  }
+
+  it('孤儿 stash 领养（home 已不在）：还原后按 keepSessions=true 保留', async () => {
+    const io = new FakeIo()
+    seedStash(io)
+    await expect(resetHarnessData(HOME, true, io)).resolves.toBe(true)
+    expect(io.dirs.has(`${HOME}/sessions/--E-Workspace-Re_Cherry--`)).toBe(true)
+    expect(io.dirs.has(STASH)).toBe(false)
+  })
+
+  it('孤儿 stash 领养（home 已不在）：keepSessions=false 时随全删意图一起删除', async () => {
+    const io = new FakeIo()
+    seedStash(io)
+    await expect(resetHarnessData(HOME, false, io)).resolves.toBe(true)
+    expect(io.dirs.has(STASH)).toBe(false)
+    expect(io.dirs.has(`${HOME}/sessions`)).toBe(false)
+  })
+
+  it('删除与恢复双双失败：AggregateError 上抛，stash 原样保留（不静默）', async () => {
+    const io = new FakeIo()
+    seed(io)
+    io.failRemove.add(HOME)
+    io.failRename.add(STASH)
+    await expect(resetHarnessData(HOME, true, io)).rejects.toThrow(/reset-stash/)
+    expect(io.dirs.has(STASH)).toBe(true)
+    expect(io.dirs.has(`${HOME}/sessions`)).toBe(false)
+  })
+
+  it('孤儿 stash 领养失败（rename 被锁）：错误上抛，home 未被删除', async () => {
+    const io = new FakeIo()
+    seedStash(io)
+    io.dirs.add(HOME)
+    io.dirs.add(`${HOME}/profiles`)
+    io.failRename.add(STASH)
+    await expect(resetHarnessData(HOME, false, io)).rejects.toThrow('EPERM (rename)')
+    expect(io.dirs.has(`${HOME}/profiles`)).toBe(true)
+    expect(io.dirs.has(STASH)).toBe(true)
   })
 })

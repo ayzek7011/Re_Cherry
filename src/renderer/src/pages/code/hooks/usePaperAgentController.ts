@@ -13,8 +13,10 @@ import { usePaperAgentStatus } from './useCodeCliStatus'
 //    （home/paper-agent/config/model.json），没有"Cherry 侧配置文件随运行态失效"这条链。
 // ② 启动失败分态由主进程 PaperAgentService 给出（not_installed/cancelled/startup_failed），
 //    渲染层按表翻译。
-// 弹窗与 dsh/hermes 同容器：软件内小程序 webview，id 遵守 code-mate-* 约定（磁贴/关页即停
-// 的既有接线自动生效）。
+// 弹窗与 dsh/hermes 同容器：软件内小程序 webview，id 遵守 code-mate-* 约定。
+// （用户裁决 2026-10-19）：「关页即停」只覆盖**标签页**形态（顶部导航，TabsService
+// 的 closeTab/closeOtherTabs 链）；侧栏弹窗布局下 hide 弹窗不算关页——受管进程继续
+// 跑，停止走 /code 面板的停止按钮。
 
 const logger = loggerService.withContext('usePaperAgentController')
 

@@ -19,7 +19,8 @@ export function useRemoveCliToolDialog({
   remove
 }: {
   toolName: string
-  remove: (tool: CodeCli) => Promise<void>
+  /** True when the tool is actually gone; false keeps the dialog open for an in-place retry. */
+  remove: (tool: CodeCli) => Promise<boolean>
 }): RemoveCliToolDialogController {
   const { t } = useTranslation()
   const [removeTarget, setRemoveTarget] = useState<CodeCli | null>(null)
@@ -40,10 +41,10 @@ export function useRemoveCliToolDialog({
 
         setIsRemoving(true)
         try {
-          await remove(removeTarget)
+          const removed = await remove(removeTarget)
           // （用户裁决）：卸载完成后关闭确认窗——原实现只复位 isRemoving，
           // 窗口停在已完成的确认态。失败时保留窗口便于就地重试（错误行常驻渲染）。
-          setRemoveTarget(null)
+          if (removed) setRemoveTarget(null)
         } finally {
           setIsRemoving(false)
         }

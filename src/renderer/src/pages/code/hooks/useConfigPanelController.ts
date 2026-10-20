@@ -34,9 +34,8 @@ import type { ApiGatewayProviderBundle } from './useApiGatewayProvider'
 // ② Props 类型缝：ConfigEditPanelProps/SubmitValues ← components/configEditPanel/types
 //   （fork 移植面）；OwnLoginConfigPanelProps 同（自 V2 UI 件前移，见该文件缝注）。
 // ③ Provider ← providerView 投影（4b 装配点先投影再入本层）。
-// ④ 运行期 dormant 臂：own-login 面在 fork 为空集（LOGIN_CAPABLE_CLI_TOOLS=[]、adapter 无
-//   buildOwnLoginDraft），own-login 分支保形但不可达；gateway 写路径经 useApiGatewayProvider
-//   的 dormant 桩（恒 null）同样不可达。
+// ④ own-login 臂在 fork 不可达（LOGIN_CAPABLE_CLI_TOOLS=[]、adapter 无 buildOwnLoginDraft，
+//   保形）；gateway 写路径经 useApiGatewayProvider 已转正——dsh/hermes 的网关配置写真实生效。
 
 const logger = loggerService.withContext('useConfigPanelController')
 

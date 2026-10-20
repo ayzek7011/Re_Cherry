@@ -63,7 +63,7 @@ import {
   harnessGenerationRecord,
   nodeRuntimeDir
 } from './paths'
-import { type HarnessResetIo,resetHarnessData } from './resetHarnessData'
+import { type HarnessResetIo, resetHarnessData } from './resetHarnessData'
 
 const logger = loggerService.withContext('DeepSeekHarnessService')
 
@@ -296,16 +296,26 @@ class DeepSeekHarnessService {
   }
 
   async stop(): Promise<void> {
+    // Abort first, before queueing on the mutex: an in-flight startup holds the mutex
+    // for up to START_TIMEOUT_MS, and the abort is what makes it fail fast and release.
     for (const startup of this.startupAbortControllers) startup.abort()
-    await this.operationMutex.runExclusive(async () => {
-      const transitionBefore = this.statusTransitionId
-      await this.stopOwnedProcessLocked()
-      this.url = undefined
-      this.runningPermissionMode = undefined
-      this.setStatus('stopped')
-      // A no-op stop (already stopped) still confirms the terminal state to the renderer.
-      if (this.statusTransitionId === transitionBefore) this.setStatus('stopped', { force: true })
-    })
+    await this.operationMutex.runExclusive(() => this.stopLocked())
+  }
+
+  /**
+   * stop() 的锁内体；resetData 复用它，把「停 + 删」包进同一次互斥——否则在 stop() 放锁
+   * 之后、rm 之前排队的 start() 会在 home 被删除期间把 harness 拉起并写入新会话。
+   * 不含 abort 循环：调用方（stop/resetData）必须在排队取锁**之前**先 abort，
+   * 否则对在飞启动的取消要等到拿到锁才生效。
+   */
+  private async stopLocked(): Promise<void> {
+    const transitionBefore = this.statusTransitionId
+    await this.stopOwnedProcessLocked()
+    this.url = undefined
+    this.runningPermissionMode = undefined
+    this.setStatus('stopped')
+    // A no-op stop (already stopped) still confirms the terminal state to the renderer.
+    if (this.statusTransitionId === transitionBefore) this.setStatus('stopped', { force: true })
   }
 
   /**
@@ -657,11 +667,16 @@ class DeepSeekHarnessService {
   /**
    * 重置编码助手数据：停 harness → 删 home\dsh（可选保留 sessions）。
    * 路径全部由 paths.ts 派生，渲染层只传布尔；失败如实上抛（ipc 层包成 Result）。
+   * 「停 + 删」在同一份 operationMutex 内完成：stop 与 start 共用这把锁，rm 期间排队
+   * 的 start() 只能在删除完成后进入，新建全新 home——绝不跑在半删状态上。
    */
   async resetData(keepSessions: boolean): Promise<void> {
-    await this.stop()
-    await resetHarnessData(deepSeekHarnessHome(), keepSessions, harnessResetIo)
-    logger.warn(`code-mate: harness data reset (keepSessions=${String(keepSessions)})`)
+    for (const startup of this.startupAbortControllers) startup.abort()
+    await this.operationMutex.runExclusive(async () => {
+      await this.stopLocked()
+      await resetHarnessData(deepSeekHarnessHome(), keepSessions, harnessResetIo)
+      logger.warn(`code-mate: harness data reset (keepSessions=${String(keepSessions)})`)
+    })
   }
 
   private handleChildTermination(child: ChildProcess, code: number | null, signal: NodeJS.Signals | null): void {

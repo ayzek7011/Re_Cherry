@@ -14,6 +14,19 @@
 
 import type { CliConfigTarget, CliConfigWriteFile, FileConfiguredCli } from '@shared/utils/cliConfig'
 import { CLI_CONFIG_TARGET_IDS, FILE_CONFIGURED_CLI_TOOLS } from '@shared/utils/cliConfig'
+import {
+  normalizeDeepSeekHarnessSettings,
+  type DeepSeekHarnessAgentPreset,
+  type DeepSeekHarnessPermissionMode
+} from '@shared/types/codeCli'
+import { UniqueModelIdSchema, type UniqueModelId } from '@shared/types/uniqueModelId'
+
+/**
+ * fork 缝：`'direct' | 'gateway'` 的正源在 services/deepSeekHarness/config.ts（DeepSeekHarnessMode）；
+ * 此处内联同形联合，避免为两个字符串字面量把 yaml/内核依赖拉进本件（结构与正源同源，服务端
+ * start() 的参数类型按结构收纳）。
+ */
+export type DeepSeekHarnessStartMode = 'direct' | 'gateway'
 
 /** 单个配置文件的内容上限（V2 同值）：这是配置文件，不是数据搬运通道。 */
 export const CLI_CONFIG_CONTENT_LIMIT = 1024 * 1024
@@ -83,4 +96,39 @@ export function parseCliConfigWriteInput(payload: unknown): {
     return { target, content }
   })
   return { cliTool, files: parsed }
+}
+
+/** `deepseek_harness.start` 校验后的载荷（主进程面：mode 路由、uniqueModelId 寻址、设置写盘）。 */
+export interface DeepSeekHarnessStartPayload {
+  mode: DeepSeekHarnessStartMode
+  uniqueModelId: UniqueModelId
+  agentPreset: DeepSeekHarnessAgentPreset
+  permissionMode: DeepSeekHarnessPermissionMode
+}
+
+/**
+ * 启动通道入参：`{ mode, uniqueModelId, agentPreset?, permissionMode? }`。
+ *
+ * 这是 code-cli 生命周期组里唯一把渲染层值写进**子进程 env**（`DSH_PERMISSION_MODE`）与
+ * **settings.yaml**（`agent-presets.default`）的通道——不经此断言，未知 mode 会被当成
+ * direct、任意串会原样落进 env/YAML。settings 两个键走 shared 归一化（未知值回默认，
+ * 不抛）；mode 与 uniqueModelId 形状不对即抛（无安全默认可用）。
+ */
+export function parseDeepSeekHarnessStartInput(payload: unknown): DeepSeekHarnessStartPayload {
+  if (typeof payload !== 'object' || payload === null) {
+    throw new Error('Invalid deepseek_harness.start input: expected an object')
+  }
+  const { mode, uniqueModelId, agentPreset, permissionMode } = payload as Record<string, unknown>
+  if (mode !== 'direct' && mode !== 'gateway') {
+    throw new Error(`Invalid deepseek_harness.start input: mode must be "direct" or "gateway", got ${String(mode)}`)
+  }
+  const parsedModelId = UniqueModelIdSchema.safeParse(uniqueModelId)
+  if (!parsedModelId.success) {
+    throw new Error('Invalid deepseek_harness.start input: uniqueModelId must be "providerId::modelId"')
+  }
+  return {
+    mode,
+    uniqueModelId: parsedModelId.data,
+    ...normalizeDeepSeekHarnessSettings({ agentPreset, permissionMode })
+  }
 }

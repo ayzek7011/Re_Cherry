@@ -44,8 +44,9 @@ import { useToolUpdateCheck } from './useToolUpdateCheck'
 //   running/stopping 合成与 onLaunch/onStop/onOpenDashboard 分流收敛到 hermes/deepseek 两臂。
 // ④ providers 投影缝：fork useProviders 出 fork 原生 Provider，先过 toCliProvider 投影再入本层
 //   全部 hooks（4a 装配点须知）；fork 无 isLoading 面，isProvidersLoading 恒 false。
-// ⑤ operation 面缝：fork 快照无 operation 广播面（见 ../types 缝注）——mergedInstallingTools 收敛
-//   为本地 busy 集合副本，installError 恒 undefined，onInstall 不带 retry 目标版本。
+// ⑤ operation 面缝（W4-4 后已转正）：fork 快照**有** operation（types.ts:37）——mergedInstallingTools
+//   为本地 busy 集合 + 全部快照 operation（不限选中工具）的并集；installError 接快照
+//   lastFailure（见 installError 求值处），onInstall 不带 retry 目标版本。
 // ⑥ IPC/toast/logger 缝：window.toast（4a 同款）、'@logger'。
 // ⑦ 类型缝：CodeCliId ← @shared/types/codeCliState；Provider/Model 消费面 ← providerView 投影。
 
@@ -135,8 +136,9 @@ export function useCodeCliPageViewProps(
     },
     [t]
   )
-  // fork 缝②③（续）：LOGIN_CAPABLE_CLI_TOOLS 空集 + 网关 bundle 恒 null → 两个 show 标志在 fork
-  // 恒 false（表达式保留 V2 原文形状，prependedProviders 随之为空集）。
+  // fork 缝②③（续）：LOGIN_CAPABLE_CLI_TOOLS 仍为空集（showOwnLoginCard 恒 false）；
+  // 网关 bundle 已由 的 dormant 桩**转正**（useApiGatewayProvider 恒返回非 null）——
+  // showGatewayCard 对 gateway-capable 工具（dsh/hermes）为 true。
   const showOwnLoginCard = LOGIN_CAPABLE_CLI_TOOLS.has(selectedCliTool)
   const showGatewayCard = GATEWAY_CAPABLE_CLI_TOOLS.has(selectedCliTool) && !!apiGatewayBundle
   const prependedProviders = useMemo(
@@ -214,9 +216,25 @@ export function useCodeCliPageViewProps(
   const snapshotOperation = statuses[selectedCliTool]?.operation
   const mergedInstallingTools = useMemo(() => {
     const next = new Set<string>(installingTools)
+    // 全量并集：operation 是主进程持有的进行态，非选中工具重挂载后侧栏的"正在安装"
+    // 只能靠它恢复（本地 busy 集合已随组件销毁）。键 = 工具 id（与本地 busy 集合同域）。
+    for (const [toolId, status] of Object.entries(statuses)) {
+      if (status.operation?.kind === 'install') next.add(toolId)
+    }
     if (snapshotOperation?.kind === 'install') next.add(selectedCliTool)
     return next
-  }, [installingTools, snapshotOperation, selectedCliTool])
+  }, [installingTools, statuses, snapshotOperation, selectedCliTool])
+  // 卸载进行中的工具：版本卡不渲染可用「卸载」（点了会被主进程变更闸拒绝，多一个误导
+  // 性 error toast）；remove 态不被 installing 集合覆盖，单独成集合。
+  const mergedRemovingTools = useMemo(
+    () =>
+      new Set(
+        Object.entries(statuses)
+          .filter(([, status]) => status.operation?.kind === 'remove')
+          .map(([toolId]) => toolId)
+      ),
+    [statuses]
+  )
   const selectedExecutable = CODE_CLI_TOOL_PRESET_MAP[selectedCliTool].executable
   const snapshotVersionStatus: VersionStatus = statuses[selectedCliTool] ?? {
     installed: false,
@@ -306,13 +324,16 @@ export function useCodeCliPageViewProps(
     isPaperAgentTool && (paperAgent.running || paperAgent.starting || paperAgent.stopping)
   const providerActionsDisabled =
     deepSeekHarnessActionsDisabled || hermesDashboardActionsDisabled || paperAgentActionsDisabled
+  // Promise<boolean> 语义在这里闭合：false（stop 被拒/卸载失败）沿原路上抛给确认窗，
+  // 窗口保持打开以便就地重试——吞掉布尔会让"失败保窗"的裁决失效。
   const handleRemove = useCallback(
-    async (toolId: CodeCli) => {
-      if (toolId === CodeCli.DEEPSEEK_HARNESS && !(await deepSeekHarness.onStop())) return
-      if (toolId === CodeCli.HERMES && !(await hermesDashboard.onStop())) return
-      if (toolId === CodeCli.PAPER_AGENT && !(await paperAgent.onStop())) return
+    async (toolId: CodeCli): Promise<boolean> => {
+      if (toolId === CodeCli.DEEPSEEK_HARNESS && !(await deepSeekHarness.onStop())) return false
+      if (toolId === CodeCli.HERMES && !(await hermesDashboard.onStop())) return false
+      if (toolId === CodeCli.PAPER_AGENT && !(await paperAgent.onStop())) return false
       const success = await remove(toolId)
-      if (success && currentProviderId) {
+      if (!success) return false
+      if (currentProviderId) {
         if (toolId !== CodeCli.DEEPSEEK_HARNESS) {
           try {
             await clearCliConfig({ cliTool: toolId })
@@ -324,6 +345,7 @@ export function useCodeCliPageViewProps(
         await setCurrentProvider(null)
         setCurrentCliConfigConnection(null)
       }
+      return true
     },
     [
       deepSeekHarness,
@@ -410,9 +432,12 @@ export function useCodeCliPageViewProps(
           onInstall: () => void install(selectedCliTool),
           onUpgrade: () => void upgrade(selectedCliTool, versionStatus.latest),
           // Uninstall authority is the live application fact: offer removal only
-          // when the fixed CLI's exact recipe is applied or broken.
+          // when the fixed CLI's exact recipe is applied or broken — and not while a
+          // remove is already in flight (the main gate would refuse it with a
+          // misleading busy error; the sidebar's busy tag covers install only).
           onRemove:
-            versionStatus.applicationStatus === 'applied' || versionStatus.applicationStatus === 'broken'
+            (versionStatus.applicationStatus === 'applied' || versionStatus.applicationStatus === 'broken') &&
+            !mergedRemovingTools.has(selectedCliTool)
               ? () => removeDialog.requestRemove(selectedCliTool)
               : undefined,
           // paper-agent 无供应商/模型选择面——启动即拉起受管 uvicorn；dsh/hermes 走

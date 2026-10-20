@@ -671,6 +671,7 @@
     },
     "install_success": "安装成功",
     "installing": "安装中…",
+    "auto_heal_failed": "自愈开关更新失败",
     "latest": "最新",
     "launch": {
       "error": "启动失败，请重试",
@@ -678,6 +679,7 @@
       "title": "启动 {{tool}}",
       "validation_error": "请完成所有必填项：CLI 工具、模型和工作目录"
     },
+    "open_web_ui_failed": "打开 Web UI 失败",
     "launching": "启动中...",
     "model_providers": "模型服务商",
     "model_selection": "模型选择",
@@ -3807,6 +3809,37 @@
       "uninstallFailed": "卸载技能失败：{{id}}",
       "uninstallSuccess": "技能已卸载：{{name}}",
       "viewSource": "查看源码"
+    },
+    "apiGateway": {
+      "address": {
+        "label": "地址"
+      },
+      "description": "编码助手的本地统一网关（OpenAI/Anthropic 兼容）。",
+      "lan": {
+        "hint": "开启后局域网内设备可经本机地址访问网关。保存后收敛生效；运行中的网关会按需重启。",
+        "label": "局域网访问",
+        "title": "局域网访问"
+      },
+      "operation_failed": "操作失败",
+      "port": {
+        "hint": "保存后立即生效；网关运行中会自动按新端口重启。",
+        "label": "端口",
+        "save": "保存",
+        "title": "端口"
+      },
+      "restart": {
+        "action": "重启",
+        "label": "重启网关"
+      },
+      "restarted": "网关已重启",
+      "saved": "已保存",
+      "status": {
+        "label": "状态",
+        "lan": "局域网 :{{port}}",
+        "running": "运行中",
+        "stopped": "已停止"
+      },
+      "title": "统一网关"
     },
     "theme": {
       "color_primary": "主题颜色",

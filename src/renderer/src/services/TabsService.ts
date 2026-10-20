@@ -4,6 +4,7 @@ import { setOpenedKeepAliveMinapps } from '@renderer/store/runtime'
 import { setPinnedTabs } from '@renderer/store/settings'
 import {
   closeOtherTabs as closeOtherTabsAction,
+  HOME_TAB_ID,
   removeTab,
   restorePinnedTabs as restorePinnedTabsAction,
   setActiveTab,
@@ -176,6 +177,15 @@ class TabsService {
     if (!target) {
       logger.warn(`Tab with id ${tabId} not found`)
       return false
+    }
+
+    // 关页即停链对批量关闭同样生效：reducer 只做集合过滤，不会触发 closeTab 的
+    // 停机/清理路径——先对将被移除的每个标签补调（stop 对 code-mate 之外的 id 是
+    // 幂等空操作，cleanupMinAppCache 对非 /apps/ 标签同样），再交给 reducer。
+    const removed = state.tabs.tabs.filter((tab) => tab.id !== tabId && tab.isPinned !== true && tab.id !== HOME_TAB_ID)
+    for (const tab of removed) {
+      this.stopCodeMateToolIfMinappTab(tab.id)
+      this.cleanupMinAppCache(tab.id)
     }
 
     store.dispatch(closeOtherTabsAction(tabId))

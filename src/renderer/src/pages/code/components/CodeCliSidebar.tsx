@@ -13,8 +13,9 @@ import { Scrollbar } from './shadcn'
 // ① sidebarShortcuts 段不搬：isSidebarPinned/onToggleSidebar props、CommandContextMenu/
 //   CommandPopupMenu/SidebarShortcutIcon 与行尾"更多"菜单按钮整体裁掉（fork 未建侧栏快捷方式
 // 面，父代理挂）。
-// ② 状态面缝：fork VersionStatus 无 operation（移除中旋转态）——SidebarStatusTag 收敛为
-//   busy 安装态与未安装标签两臂。
+// ② 状态面缝：fork VersionStatus **有** operation（W4-4 起，types.ts:37）但侧栏 props 只收
+//   本地 busy 集合——SidebarStatusTag 收敛为 busy 安装态与未安装标签两臂（跨重挂载的
+//   安装/卸载恢复由 mergedInstallingTools/mergedRemovingTools 承担，见装配点缝⑤）。
 // ③ UI 面缝：@cherrystudio/ui 的 Scrollbar → 本页 shim（fork Scrollbar 复用）、CliIcon → 本页
 //   移植件（fork 品牌图标资产替代）。
 

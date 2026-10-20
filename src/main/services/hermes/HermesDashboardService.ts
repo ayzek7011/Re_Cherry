@@ -166,16 +166,21 @@ export class HermesDashboardService {
           this.setStatus('running', url)
           return { success: true, url }
         } catch (error) {
-          await this.stopOwnedProcessLocked().catch((stopError) => {
-            logger.warn('Failed to stop Hermes Dashboard after launch failure', stopError as Error)
-          })
-          this.setStatus('error')
           const message = sanitizeDiagnostic(
             error instanceof Error ? error.message : 'Failed to start Hermes Dashboard'
           )
+          const reason = getStartFailureReason(error, message)
+          // Terminal state first（与 DeepSeekHarnessService/PaperAgentService 同序）：先落定
+          // 终态，清理路径里的退出回调就不会在半途广播一个瞬态 'stopped'。not_installed 与
+          // cancelled 是稳定态而非故障态——直接落 stopped，与 paper-agent「未安装不进 starting」
+          // 的对外语义对齐（同因同果）。
+          this.setStatus(reason === 'not_installed' || reason === 'cancelled' ? 'stopped' : 'error')
+          await this.stopOwnedProcessLocked().catch((stopError) => {
+            logger.warn('Failed to stop Hermes Dashboard after launch failure', stopError as Error)
+          })
           return {
             success: false,
-            reason: getStartFailureReason(error, message),
+            reason,
             message
           }
         }
@@ -263,7 +268,9 @@ export class HermesDashboardService {
     this.child = null
     if (this.stoppingChild === child) {
       this.stoppingChild = null
-      this.setStatus('stopped')
+      // 受控停止：仅当状态还在 starting/running 才落 stopped——失败启动的清理路径已先落定
+      // 终态（error/stopped），不得被这里迟到的退出回调改写（DeepSeekHarnessService 同款守卫）。
+      if (this.status === 'starting' || this.status === 'running') this.setStatus('stopped')
       return
     }
     if (this.status === 'starting' || this.status === 'running') {

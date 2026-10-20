@@ -2,7 +2,7 @@ import { loggerService } from '@logger'
 import { CODE_CLI_TOOL_PRESET_MAP } from '@shared/data/presets/codeCliTools'
 import type { CodeCli } from '@shared/types/codeCli'
 import type { InstallProgressPayload } from '@shared/types/installProgress'
-import { type Dispatch, type SetStateAction, useCallback, useEffect, useState } from 'react'
+import { type Dispatch, type SetStateAction, useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { withDetail } from '../utils/errorDetail'
@@ -24,7 +24,7 @@ const logger = loggerService.withContext('useBinaryActions')
 /**
  * Per-tool install/upgrade/remove actions. The busy Sets are global (not keyed
  * to the selected tool) so the sidebar can show every tool's install state
- * independently — installing codex must not make the claude-code card flash.
+ * independently — installing one tool must not make another tool's card flash.
  */
 export function useBinaryActions() {
   const { t } = useTranslation()
@@ -38,6 +38,11 @@ export function useBinaryActions() {
     const unsubscribe = window.api.codeCli.binary.onInstallProgress((payload) => setInstallProgress(payload))
     return unsubscribe
   }, [])
+
+  // 同工具连点闸（state 更新到下一次渲染之前拦不住双击；useToolUpdateCheck 同款）：
+  // 双发会被主进程变更闸以 OPERATION_BUSY_MESSAGE 拒掉，多弹一个 error toast，且第二发的
+  // finally 会把第一发还在跑的 installProgress 误清掉。
+  const inFlight = useRef<Set<string>>(new Set())
 
   // install and upgrade share one body — both run the same name-only
   // `binary.install_tool` request; main resolves the Code CLI's fixed recipe
@@ -53,6 +58,9 @@ export function useBinaryActions() {
     ) => {
       // （）：targetVersion 真的传下去了——"检查到 A 却装了 B"是通道 tag 漂移下的
       // 常态（此前这里 `void targetVersion`，入参只是保形）。
+      const executable = CODE_CLI_TOOL_PRESET_MAP[toolId].executable
+      if (inFlight.current.has(executable)) return
+      inFlight.current.add(executable)
       try {
         setBusy((prev) => new Set(prev).add(toolId))
         // fork 缝①：V2 为 `await ipcApi.request('binary.install_tool', {name, …})`。
@@ -81,6 +89,7 @@ export function useBinaryActions() {
         logger.error(messages.logLabel, error as Error)
         window.toast.error(withDetail(t(messages.failureKey), error instanceof Error ? error.message : String(error)))
       } finally {
+        inFlight.current.delete(executable)
         setBusy((prev) => {
           const next = new Set(prev)
           next.delete(toolId)
@@ -147,7 +156,11 @@ export function useBinaryActions() {
         return true
       } catch (error) {
         logger.error('Failed to remove:', error as Error)
-        window.toast.error(t('settings.dependencies.uninstallFailed'))
+        // 与 install 的 reject 臂同形：IPC 通道本身失败（通道缺失/preload 未桥）时主进程
+        // 什么都不记录，详情只进日志用户就只看到一句通用文案。
+        window.toast.error(
+          withDetail(t('settings.dependencies.uninstallFailed'), error instanceof Error ? error.message : String(error))
+        )
         return false
       }
     },

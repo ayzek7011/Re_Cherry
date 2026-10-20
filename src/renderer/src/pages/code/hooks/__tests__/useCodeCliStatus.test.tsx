@@ -99,6 +99,41 @@ describe('useCodeCliStatus（自持渲染环）', () => {
     expect(bridge.subscriberCount()).toBe(0)
   })
 
+  it('useDeepSeekHarnessStatus：广播先到后，迟到的初值应答被丢弃（epoch 守卫）', async () => {
+    // 防线测试：当前主进程 getStatus handler 同步回复 + 消息按序投递，旧应答覆盖新广播
+    // 不可构造；这条守卫把"handler 恒为同步"的隐性前提显式化——未来某 handler 变异步时，
+    // 本测试钉住的丢弃行为就是正确行为。
+    const subscribers = new Set<StatusSubscriber>()
+    let resolveGet: ((value: unknown) => void) | undefined
+    const getStatus = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          resolveGet = resolve as (value: unknown) => void
+        })
+    )
+    const onStatus = vi.fn((callback: StatusSubscriber) => {
+      subscribers.add(callback)
+      return () => subscribers.delete(callback)
+    })
+    ;(window as unknown as { api: unknown }).api = {
+      codeCli: { deepseekHarness: { getStatus, onStatus } }
+    }
+
+    const { result } = renderHook(() => useDeepSeekHarnessStatus())
+    await act(async () => {
+      expect(getStatus).toHaveBeenCalledTimes(1)
+      // 广播先到（比挂起的初值应答新）。
+      for (const subscriber of [...subscribers]) subscriber({ status: 'running', url: 'http://127.0.0.1:9' })
+    })
+    expect(result.current.status).toBe('running')
+
+    // 初值（广播之前的旧状态）迟到：必须被丢弃，不得覆盖。
+    await act(async () => {
+      resolveGet?.({ status: 'stopped' })
+    })
+    expect(result.current.status).toBe('running')
+  })
+
   it('useApiGatewayStatus：重渲染不重订阅、不重发 IPC，且内容等价推送保持旧引用', async () => {
     const bridge = makeStatusBridge({ running: false })
     installCodeCliApi(bridge)

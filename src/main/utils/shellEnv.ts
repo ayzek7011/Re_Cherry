@@ -14,10 +14,6 @@ import path from 'path'
 // binaryEnv.ts 原文逐字；fork 无 mise、无内置 git，受管二进制目录改为 CodeMate 受管
 // node 运行时 + dsh 的 .bin（getBinarySearchDirs 见 resolveManagedSearchDirs）；
 // mergeBinaryExecutionEnv / getBundledGitDir 仍为空实现。
-// fork 缝：registry-js 未随 fork 安装（V2 依赖）。以 string 变量承载模块名，让 TS 不做
-// 静态解析（fork tsconfig noImplicitAny:false 下 dynamic import 为 any）；运行时 import
-// 失败仍走 readWindowsRegistryPath 原有 try/catch 回退，与 V2 失败路径一致。
-const REGISTRY_JS_MODULE: string = 'registry-js'
 
 const logger = loggerService.withContext('ShellEnv')
 
@@ -206,73 +202,17 @@ const applyBinaryExecutionEnv = (env: Record<string, string>) => {
 }
 
 /**
- * Replace `%VAR%` references with values from `env` (case-insensitive lookup).
- */
-function expandWindowsEnvVars(value: string, env: Record<string, string>): string {
-  return value.replace(/%([^%]+)%/g, (original, varName: string) => {
-    const key = Object.keys(env).find((k) => k.toLowerCase() === varName.toLowerCase())
-    return key ? env[key] : original
-  })
-}
-
-/**
- * Read the **current** system + user PATH from the Windows registry and expand
- * embedded `%VAR%` references so callers get a ready-to-use PATH string.
- * Returns null when both registry reads fail.
- */
-async function readWindowsRegistryPath(env: Record<string, string>): Promise<string | null> {
-  try {
-    // fork 缝：模块名经 REGISTRY_JS_MODULE 变量传入（registry-js 未随 fork 安装，见文件头缝说明）
-    const { HKEY, RegistryValueType, enumerateValuesSafe } = await import(REGISTRY_JS_MODULE)
-    const readPathValue = (hive: (typeof HKEY)[keyof typeof HKEY], subkey: string): string | null => {
-      const pathValue = enumerateValuesSafe(hive, subkey).find(
-        (value) =>
-          value.name.toLowerCase() === 'path' &&
-          (value.type === RegistryValueType.REG_SZ || value.type === RegistryValueType.REG_EXPAND_SZ)
-      )
-      return typeof pathValue?.data === 'string' ? pathValue.data : null
-    }
-
-    const systemPath = readPathValue(
-      HKEY.HKEY_LOCAL_MACHINE,
-      'SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment'
-    )
-    const userPath = readPathValue(HKEY.HKEY_CURRENT_USER, 'Environment')
-
-    if (!systemPath && !userPath) {
-      return null
-    }
-
-    const combined = [systemPath, userPath].filter(Boolean).join(';')
-    return expandWindowsEnvVars(combined, env)
-  } catch {
-    return null
-  }
-}
-
-/**
- * Build a fresh environment on Windows by copying `process.env` and replacing
- * PATH with the current registry value. This avoids the stale PATH problem
- * where `cmd.exe /c set` only inherits the Electron parent process's env.
+ * Build a fresh environment on Windows by copying `process.env`.
+ *
+ * fork 裁剪（2026-10-19）：V2 会经 registry-js 从注册表重读当前 PATH；本 fork 未把该依赖
+ * 列为直接依赖，动态 import 恒失败 → 该分支此前恒走"保留 process.env PATH"回退，且每次
+ * 取 env 都打一条 warn。按"孤儿分支不留"整支删除：Windows 的 shell env 即父进程 env 副本
+ * （与 V2 的注册表读取失败路径行为完全一致，无行为变化）。
  */
 async function getWindowsEnvironment(): Promise<Record<string, string>> {
   const env: Record<string, string> = {}
   for (const key in process.env) {
     env[key] = process.env[key] || ''
-  }
-
-  const registryPath = await readWindowsRegistryPath(env)
-  if (registryPath) {
-    const pathKeys = Object.keys(env).filter((k) => k.toLowerCase() === 'path')
-    for (const key of pathKeys) {
-      env[key] = registryPath
-    }
-    if (pathKeys.length === 0) {
-      env.Path = registryPath
-    }
-    logger.debug('Replaced PATH with fresh registry value')
-  } else {
-    logger.warn('Could not read PATH from Windows registry, keeping process.env PATH')
   }
 
   return env

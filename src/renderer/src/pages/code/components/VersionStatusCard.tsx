@@ -27,14 +27,13 @@ import { Button, ConfirmDialog, Tooltip } from './shadcn'
 // fork 移植自 cherry-studio v2 src/renderer/pages/code/components/VersionStatusCard.tsx
 //（2026-09-24）。缝点三处，状态推导/四脚位（upgrade/remove/retry/launch）与
 // 启动按钮 aria 语义逐字：
-// ① operation 面缝：fork VersionStatus 无 operation 广播面（见 ../types 缝注）——removing/
-//   failedInstall/failedRemoval 恒 false，retry 走 applicationStatus（broken/unknown）臂，
-//   安装失败行（BinaryInstallFailureRow）由 installError prop（装配点恒 undefined，见
-//   useCodeCliPageViewProps 缝⑤）驱动，形状保留。
+// ① operation 面缝（W4-4 后已转正）：removing/failedRemoval 恒 false 的旧裁剪已随快照
+//   operation 面恢复——remove 进行中由装配点收掉 onRemove（mergedRemovingTools），
+//   installError 来自快照 lastFailure（不再恒 undefined），retry 走 applicationStatus
+//   （broken）臂。
 // ② UI 面缝：Button/Tooltip → 本页 shim；CliIcon → 本页移植件；BinaryInstall* ← 本页移植件。
 // ③ 视觉缝：V2 复合状态色令牌（success-border/success-subtle/warning-subtle 族）→ fork 的
-//   success/warning 透明度修饰（见 shadcn.tsx 视觉缝注）；"applicationStatus === 'conflict'|'unknown'"
-//   臂中 conflict 在 fork 状态面不存在，比较保留原文形状（多一个恒假臂无害）。
+//   success/warning 透明度修饰（见 shadcn.tsx 视觉缝注）。
 
 interface VersionStatusCardProps {
   toolId: string
@@ -123,9 +122,9 @@ export const VersionStatusCard: FC<VersionStatusCardProps> = ({
   }
   const isInstalled = status.installed
   const canUpgrade = isInstalled && status.canUpgrade
-  // fork 缝①（续）：removing/failedRemoval 恒 false（无 operation 面）；retry 的 failed-install 臂
-  // 随之消失，'conflict'/'unknown' 臂随 fork 状态面（'applied'|'broken'|'absent'）裁剪——
-  // broken 即 retry 面。
+  // fork 缝①（续）：removing/failedRemoval 由装配点收口（remove 在飞时 onRemove 即 undefined，
+  // 按钮不渲染）；retry 的 failed-install 臂消失，'conflict'/'unknown' 臂随 fork 状态面
+  // （'applied'|'broken'|'absent'）裁剪——broken 即 retry 面。
   const retryInstall = !!onInstall && status.applicationStatus === 'broken'
   const canRemove = !!onRemove && (status.applicationStatus === 'applied' || status.applicationStatus === 'broken')
   const installing = isInstalling || isUpgrading
@@ -144,7 +143,10 @@ export const VersionStatusCard: FC<VersionStatusCardProps> = ({
       variant="outline"
       size="sm"
       onClick={launchUnavailable ? undefined : running ? onStop : onLaunch}
-      disabled={busy || (running ? stopping : launching) || (launchUnavailable && !launchDisabledHint)}
+      // 全覆盖式禁用：launching/stopping 任一在飞都不放开——"已停止"广播先于 stop() 返回
+      // 到达的瞬间，旧判据 (running ? stopping : launching) 会让启动键可点（主进程互斥
+      // 兜底无实害，这里把判据本身收紧）。
+      disabled={busy || launching || stopping || (launchUnavailable && !launchDisabledHint)}
       aria-disabled={(launchUnavailable && !!launchDisabledHint) || undefined}
       aria-describedby={launchUnavailable && launchDisabledHint ? launchDisabledHintId : undefined}
       className={
@@ -191,8 +193,10 @@ export const VersionStatusCard: FC<VersionStatusCardProps> = ({
                 {t('settings.dependencies.source.system')}
               </span>
             ) : (
+              // latestUnknown（查询失败）时不出"已是最新"徽章——失败不是结论。
               cleanlyInstalled &&
-              !canUpgrade && (
+              !canUpgrade &&
+              !status.latestUnknown && (
                 <span className="shrink-0 rounded border border-success/35 bg-success/15 px-1.5 py-0.5 text-[10px] text-success">
                   {t('code.up_to_date')}
                 </span>

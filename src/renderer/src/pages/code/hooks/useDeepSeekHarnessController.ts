@@ -60,7 +60,7 @@ export function useDeepSeekHarnessController({
   const isDeepSeekHarness = selectedCliTool === CodeCli.DEEPSEEK_HARNESS
   // Status comes from main-pushed events (single source of truth); only the local
   // launching/stopping intents live here, covering the gap until events arrive.
-  const { status, url } = useManagedToolStatus('deepseek-harness', isDeepSeekHarness)
+  const { status, url } = useManagedToolStatus(isDeepSeekHarness)
   const [launching, setLaunching] = useState(false)
   const [stopping, setStopping] = useState(false)
   const [autoHeal, setAutoHeal] = useState(true)
@@ -159,7 +159,7 @@ export function useDeepSeekHarnessController({
       throw new Error('DeepSeek Harness Web UI is not running')
     } catch (error) {
       logger.error('Failed to open DeepSeek Harness Web UI', error as Error)
-      window.toast.error(t('code.launch.error'))
+      window.toast.error(t('code.open_web_ui_failed'))
     }
   }, [openWebUi, t, url])
 
@@ -170,7 +170,7 @@ export function useDeepSeekHarnessController({
         setAutoHeal(result.autoHeal ?? enabled)
       } catch (error) {
         logger.error('Failed to toggle the harness self-heal switch', error as Error)
-        window.toast.error(t('code.launch.error'))
+        window.toast.error(t('code.auto_heal_failed'))
       }
     },
     [t]
