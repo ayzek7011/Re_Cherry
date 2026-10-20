@@ -14,7 +14,7 @@ import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useCliVersionStatuses } from '../useCliVersionStatuses'
-import type { BinaryToolSnapshot } from '../utils/binarySnapshot'
+import type { BinaryToolSnapshot } from '../../utils/binarySnapshot'
 
 const APPLIED_DSH: BinaryToolSnapshot = {
   name: 'dsh',
