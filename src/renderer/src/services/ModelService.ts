@@ -1,6 +1,6 @@
 import { getStoreProviders } from '@renderer/hooks/useStore'
 import type { Model } from '@renderer/types'
-import { pick } from 'lodash'
+import { pick } from 'lodash-es'
 
 import { getProviderName } from './ProviderService'
 

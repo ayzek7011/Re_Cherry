@@ -9,7 +9,7 @@ import { SettingDivider, SettingRow, SettingRowTitle } from '@renderer/pages/set
 import { getModelUniqId } from '@renderer/services/ModelService'
 import type { Model } from '@renderer/types'
 import { Slider, Tooltip } from 'antd'
-import { find } from 'lodash'
+import { find } from 'lodash-es'
 import { Info } from 'lucide-react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'

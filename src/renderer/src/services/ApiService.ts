@@ -23,7 +23,7 @@ import {
   NOT_SUPPORT_API_KEY_PROVIDER_TYPES,
   NOT_SUPPORT_API_KEY_PROVIDERS
 } from '@renderer/utils/provider'
-import { isEmpty, takeRight } from 'lodash'
+import { isEmpty, takeRight } from 'lodash-es'
 
 import {
   // getAssistantProvider,

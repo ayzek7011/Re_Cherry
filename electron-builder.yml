@@ -138,6 +138,90 @@ artifactBuildCompleted: scripts/artifact-build-completed.js
 releaseInfo:
   releaseNotes: |
     <!--LANG:en-->
+    Re_Cherry 1.2.0 - Reliability fixes for large chats, files, painting and editing
+
+    This round closes five reported problem areas: message sending on very large
+    conversations, file-management ghosting, painting reference images, edited
+    message resends, and a lighter first paint.
+
+    📬 Large-conversation sending
+    - Requests now carry a context budget: when a conversation exceeds the
+      topic's context-count setting, the request is trimmed at the nearest real
+      user message before it leaves the app, with a fail-safe that never alters
+      a request when the budget is absent or invalid.
+    - A topic runs one turn at a time (queue concurrency 1), so parallel answers
+      can no longer cross-claim each other's projections and lock the input bar.
+    - An MCP server being temporarily unreachable no longer rewrites the tool
+      signature and forces a full session remount on every send; running turns
+      keep their live agent and the drift is picked up next turn.
+    - Four silent failures now speak: a missing triggering message throws into
+      the normal error path, a failed send shows a toast, rate limiting reads
+      the current topic, and an orphaned turn always lands in a terminal state.
+
+    🗂️ File management
+    - File paths are repaired at startup in every window (the quick-assistant
+      window never fetched them), with retry.
+    - Dot-less extension rows are repaired on startup; broken images show a
+      placeholder instead of spinning forever; opening a file reports failure
+      instead of failing silently.
+    - Deletion removes bytes first and keeps the row when bytes fail; it is
+      idempotent when bytes are already gone.
+    - Generated-image reference counting no longer resets on replay; backup's
+      transient file locks are retried; a failed startup restore now tells you
+      (the backup copy is kept and retried next start).
+
+    🎨 Painting reference images
+    - Reference images are actually uploaded into the file store before a
+      generation request; a failed upload removes the chip and asks for a
+      retry instead of sending a request that can never succeed.
+
+    ✏️ Edited message resends
+    - "Save and send" on an edited message now carries newly added attachments
+      in the branch resend; the fallback path shows a visible notice.
+
+    ⚡ Performance
+    - The main-window first paint is 23% smaller (12.39 MB → 9.54 MB) and the
+      quick-assistant window 14% smaller: the onboarding chain, the error
+      detail modal, the CodeMirror chain, the zh locale pack, the lodash-es
+      migration, franc-min and several popups are now lazy.
+
+    <!--LANG:zh-CN-->
+    Re_Cherry 1.2.0 —— 超大对话、文件管理、生图与编辑重发的可靠性修复
+
+    本轮收口五个上报问题域：超大对话消息发送、文件管理幽灵态、生图参考图、
+    编辑消息重发，以及更轻的首屏。
+
+    📬 超大对话发送
+    - 请求携带上下文预算：对话超过话题的上下文条数设置时，请求在发出前对齐最近
+      一条真实用户消息裁剪；预算缺失或非法时原样透传，绝不破坏请求。
+    - 一个话题同一时刻只跑一个回合（队列并发 1），并答回答不再互相认领投影、
+      不再把输入框锁死。
+    - MCP 服务器瞬时失联不再翻转工具签名、不再每轮强制整会话重挂；运行中的回合
+      沿用旧活体，漂移留给下一轮收口。
+    - 四类静默失败现在会说话：触发消息缺失走正常错误路径、发送失败弹提示、
+      频率限制按当前话题读、孤儿回合必定落到终态。
+
+    🗂️ 文件管理
+    - 每个窗口启动时修复文件路径地基（快捷助手窗口此前从不拉取），带重试。
+    - 启动时修复缺点的扩展名历史行；裂图显示占位符而不是永远转圈；打开文件失败
+      有提示，不再静默。
+    - 删除先删字节、失败保留行可重试；字节已消失时按幂等成功处理。
+    - 生成图片的引用计数不再被回放重置；备份的瞬时文件锁有短重试；启动还原失败
+      会弹窗告知（备份副本保留，下次启动自动重试）。
+
+    🎨 生图参考图
+    - 参考图在生成请求发出前真正上传入仓；上传失败摘除缩略图并提示重试，而不是
+      发出一个注定失败的请求。
+
+    ✏️ 编辑消息重发
+    - 编辑后的「保存并发送」在分支重发时带上新增附件；回退路径有可见提示。
+
+    ⚡ 性能
+    - 主窗口首屏面小 23%（12.39 MB → 9.54 MB）、快捷助手窗口小 14%：onboarding
+      链、错误详情弹窗、CodeMirror 链、中文语言包、lodash-es 迁移、franc-min 与
+      多个弹窗全部懒加载。
+
+    <!--LANG:en-->
     Re_Cherry 1.1.0 - CodeMate startup self-healing and an honest uninstall
 
     This round makes the embedded DeepSeek Harness survive core generation changes instead of

@@ -136,16 +136,26 @@ export function usePaintingComposerInputFiles({
       if (picked?.length) {
         addFiles(picked)
       }
+    } catch (error) {
+      // 选择框失败（用户取消返回空数组不算失败）不能静默：记日志 + 提示。
+      logger.warn('pickImages: file.select failed', error as Error)
+      presentPaintingGenerateError(
+        createPaintingGenerateError('OPERATION_FAILED', { presentation: 'toast', severity: 'warning' })
+      )
     } finally {
       setSelecting(false)
     }
   }, [addFiles, selecting])
 
   /**
-   * MATERIALIZE — generate 时调用。fork 缝里 FileMetadata 已是最终形态：
-   * 引用计数入库（addFile）保证记录被 paintings 表引用期间文件不被清仓。
-   *
-   * fork 缝（P0-A）：物化源换成实时草稿（作曲条 chips 的那份），并如实作答
+   * MATERIALIZE — generate 时调用。在仓判定分两路：
+   * - 已在仓（Dexie 有行，SEED 回灌/历史输入/已上传过的 chip）：addFile 计数引用即可。
+   * - 不在仓（托盘新 chip）：selectFile 只回元数据（path=原盘路径，字节没入仓），
+   *   必须真正 uploadFile 拷贝入仓——否则托盘缩略图裂图，generate 读
+   *   storageDir/{id}{ext} ENOENT 且请求从未发出。uploadFile 返回入仓后的
+   *   最终元数据（新 uuid/真实 ext），用它替换托盘 chip 并作为物化结果，
+   *   存档（painting.inputFiles）与后续读取从此都指向仓内文件。
+   * fork 缝（P0-A）：物化源是实时草稿（作曲条 chips 的那份），并如实作答
    * `complete`——超限或物化失败即 false，交给 usePaintingGenerationSubmit 的
    * 中止闸拦下付费请求，而不是带着陈旧/超量/缺斤少两的输入发出去。
    */
@@ -158,18 +168,20 @@ export function usePaintingComposerInputFiles({
       presentPaintingGenerateError(createPaintingGenerateError('INPUT_IMAGE_LIMIT_EXCEEDED'))
       return { files: target, complete: false }
     }
+    const materialized: FileMetadata[] = []
     const failed: FileMetadata[] = []
     for (const file of target) {
       try {
-        await FileManager.addFile(file)
-      } catch (error) {
-        // fork 缝（P0-A）：addFile 抛错不再一律放行——文件可能已在仓内（正常回落），
-        // 也可能确实没落库。只有"入不了库且查不到记录"才算物化失败。
         const existing = await FileManager.getFile(file.id).catch(() => undefined)
-        if (!existing) {
-          failed.push(file)
-          logger.warn('addFile failed for input file', error as Error, { fileId: file.id })
+        if (existing) {
+          await FileManager.addFile(file)
+          materialized.push(file)
+        } else {
+          materialized.push(await FileManager.uploadFile(file))
         }
+      } catch (error) {
+        failed.push(file)
+        logger.warn('materialize failed for input file', error as Error, { fileId: file.id })
       }
     }
     if (failed.length > 0) {
@@ -182,7 +194,10 @@ export function usePaintingComposerInputFiles({
       )
       return { files: target, complete: false }
     }
-    return { files: target, complete: true }
+    // 物化成功：托盘 chip 换成入仓后的最终元数据（uploadFile 可能去重换 id）。
+    const materializedBySourceId = new Map(materialized.map((file, index) => [target[index].id, file]))
+    updateFiles((prev) => prev.map((file) => materializedBySourceId.get(file.id) ?? file))
+    return { files: materialized, complete: true }
   }, [inputFiles, liveFiles, updateFiles])
 
   return {

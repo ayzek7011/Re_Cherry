@@ -32,6 +32,7 @@ export const EXTERNAL_TOOL_IDS = [
   'jobs',
   'trash',
   'saveAttachment',
+  'documentsExtract',
   'memory',
   'todo',
   'goal'
@@ -59,6 +60,7 @@ export const TOOL_ORIGIN_NAMES: Record<ToolPageCardId, string> = {
   jobs: 'jobs',
   trash: 'move_to_trash',
   saveAttachment: 'save_attachment',
+  documentsExtract: 'documents_extract',
   memory: 'memory',
   todo: 'todo_write',
   goal: 'goal'

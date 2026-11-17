@@ -1,4 +1,4 @@
-import i18n from '@renderer/i18n'
+import i18n, { changeAppLanguage, initI18n } from '@renderer/i18n'
 import { useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 
@@ -23,12 +23,15 @@ const App = () => {
     }
 
     const setLangHandler = (data: { lang: string }) => {
-      void i18n.changeLanguage(data.lang)
-      const newTitle = i18n.t('trace.traceWindow')
-      if (newTitle !== title) {
-        void window.api.trace.setTraceWindowTitle(i18n.t('trace.traceWindow'))
-        setTitle(newTitle)
-      }
+      // 语言包按需装载后 changeLanguage 是异步的：等切换完成再取标题文案，
+      // 否则 t() 读到的还是旧语言（原实现同步读 t 依赖了内联资源即时切换的巧合）。
+      void changeAppLanguage(data.lang).then(() => {
+        const newTitle = i18n.t('trace.traceWindow')
+        if (newTitle !== title) {
+          void window.api.trace.setTraceWindowTitle(i18n.t('trace.traceWindow'))
+          setTitle(newTitle)
+        }
+      })
     }
 
     const removeTraceHandler = window.api.events.onTraceSelected(setTraceHandler)
@@ -63,4 +66,5 @@ const App = () => {
 }
 
 const root = createRoot(document.getElementById('root')!)
-root.render(<App />)
+// i18n 懒语言包（问题5 #4）：首帧渲染等 initI18n 装载完启动语言。
+void initI18n().then(() => root.render(<App />))

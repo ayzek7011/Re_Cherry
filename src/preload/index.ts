@@ -266,6 +266,8 @@ const api = {
     text: string,
     options?: {
       reasoningEffort?: string
+      /** 上下文预算（请求消息条数上限，助手 contextCount 设置；与 topics.TopicSendOptions 逐字段对齐）。 */
+      contextCount?: number
       builtinTools?: string[]
       externalTools?: string[]
       tier?: WorkModeApprovalTier

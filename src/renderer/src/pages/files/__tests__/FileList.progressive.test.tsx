@@ -9,8 +9,10 @@
  *   ② 底部哨兵进入视口后才追加渲染剩余图片（30 张全部就位）；
  * ③ 图片总数少于一批时一次性渲染完，且不出现哨兵（不静默少显示）。
  */
+import { configureStore } from '@reduxjs/toolkit'
 import type { FileMetadata } from '@renderer/types'
 import { act, render } from '@testing-library/react'
+import { Provider } from 'react-redux'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import FileList from '../FileList'
@@ -18,6 +20,10 @@ import FileList from '../FileList'
 vi.mock('@renderer/services/FileManager', () => ({
   default: { getFileUrl: (file: { id: string }) => `file:///${file.id}.png` }
 }))
+
+// FileList 订阅 runtime.filesPath（启动竞态修复：路径晚到才揭示图片），测试态给固定值。
+const store = configureStore({ reducer: { runtime: () => ({ filesPath: 'C:\\userData\\Data\\Files' }) } })
+const withStore = (ui: React.ReactElement) => <Provider store={store}>{ui}</Provider>
 
 vi.mock('@renderer/services/FileAction', () => ({
   handleDelete: vi.fn()
@@ -92,7 +98,7 @@ describe('FileList · 图片视图（按需揭示）', () => {
 
   it('30 张图：首帧只渲染 24 张并挂出哨兵，哨兵进入视口后补齐 30 张', () => {
     const files = Array.from({ length: 30 }, (_, index) => makeFile(index))
-    const { container, getByTestId } = render(<FileList id="image" list={list} files={files} />)
+    const { container, getByTestId } = render(withStore(<FileList id="image" list={list} files={files} />))
 
     expect(container.querySelectorAll('img')).toHaveLength(24)
     expect(getByTestId('file-list-reveal-sentinel')).toBeInTheDocument()
@@ -112,7 +118,7 @@ describe('FileList · 图片视图（按需揭示）', () => {
 
   it('6 张图（不足一批）：一次性渲染全部，且没有哨兵', () => {
     const files = Array.from({ length: 6 }, (_, index) => makeFile(index))
-    const { container } = render(<FileList id="image" list={list} files={files} />)
+    const { container } = render(withStore(<FileList id="image" list={list} files={files} />))
 
     expect(container.querySelectorAll('img')).toHaveLength(6)
     expect(container.querySelector('[data-testid="file-list-reveal-sentinel"]')).toBeNull()

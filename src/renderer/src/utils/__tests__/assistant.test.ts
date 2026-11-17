@@ -1,5 +1,5 @@
 import type { Assistant } from '@renderer/types'
-import { cloneDeep } from 'lodash'
+import { cloneDeep } from 'lodash-es'
 import { describe, expect, it } from 'vitest'
 
 import { isToolUseModeFunction } from '../assistant'

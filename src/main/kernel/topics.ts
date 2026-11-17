@@ -35,6 +35,7 @@ import type { SkillTurnEntry } from '../services/skills/SkillService'
 import { skillService } from '../services/skills/SkillService'
 import * as askUserTool from './askUserTool'
 import * as describeImagesTool from './describeImageTool'
+import * as documentExtractTool from './documentExtractTool'
 import * as documentTool from './documentTool'
 import * as generateImageTool from './generateImageTool'
 import * as knowledgeReadTool from './knowledgeReadTool'
@@ -69,6 +70,14 @@ export interface KernelTopic {
   systemPrompt?: string
   /** 当前请求使用的思考档位（pi-ai 词汇）；缺省/空串 = 不显式请求（交给 provider 默认）。 */
   reasoningEffort?: string
+  /**
+   * 上下文预算（请求里允许的消息条数上限）。渲染层随建册上行助手的 contextCount
+   * 设置、随发送刷新；请求端经 dsh-llm-pi-ai 补丁的第三个中性门
+   * （globalThis.__recApplyContextBudget，见 contextBudget.ts）按它裁掉最旧历史，
+   * 防大对话每 step 全量 deriveMessages 触发 provider 上限拒绝（问题 1 R1）。
+   * 缺省/undefined = 不裁剪（UNLIMITED_CONTEXT_COUNT 语义）。
+   */
+  contextCount?: number
   /** 分支血缘：有值 = forkTopic 切出的子分支会话（父会话 id）；未定义 = 普通话题/窗口根。侧栏列表只显示根。 */
   parentTopicId?: string
   /** 截断删除后被取代：值为替代它的新会话 id；可见层与清扫只认新会话。 */
@@ -85,6 +94,8 @@ interface KernelTopicInput {
   maxTokens?: number
   systemPrompt?: string
   reasoningEffort?: string
+  /** 上下文预算（消息条数上限）；缺省 = 不裁剪。 */
+  contextCount?: number
   /** 新话题的工作目录（= dsh 会话 header.cwd；仅新建话题生效）。 */
   workingDir?: string
 }
@@ -192,6 +203,10 @@ const EXTERNAL_MOUNTS: ReadonlyArray<{ id: string; mount: (agentCtx: Context) =>
   // 两者共用档位升级流（read-only 档拒绝 + sandbox_permissions 问询放行）。
   { id: 'trash', mount: (agentCtx) => agentCtx.plugin(moveToTrashTool) },
   { id: 'saveAttachment', mount: (agentCtx) => agentCtx.plugin(saveAttachmentTool) },
+  // （2026-10-21 用户裁决）：磁盘文档线——按绝对路径抽取文档文字，两臂同权
+  // （markitdown 文本层缺省 / 文档处理通道扫描件，模型显式选 engine）。附件线
+  // （read_document/ocr_document，按每轮登记名读）不动，两条线互不替代。
+  { id: 'documentsExtract', mount: (agentCtx) => agentCtx.plugin(documentExtractTool) },
   // 用户裁决：memory / todo / goal 归外置（工作模式作用域）——它们都在会话之外
   // 留持久状态（memory 写磁盘助手级 FACT/JOURNAL；todo/goal 写会话日志并驱动 UI 面板/
   // 自动续轮）。memory 每轮根目录经 sendMessage options.memory（assistantId）登记，
@@ -213,6 +228,9 @@ const EXTERNAL_TOOL_CAPABILITIES: Record<ExternalToolId, string> = {
   jobs: 'tracking long-running background jobs (jobs)',
   trash: 'moving workspace files to the operating-system trash (move_to_trash; recoverable)',
   saveAttachment: 'saving an attached conversation file into the workspace (save_attachment)',
+  documentsExtract:
+    'extracting text from document files on disk by absolute path — native text layer by default, or the ' +
+    'document-processing channel for scanned PDFs (documents_extract)',
   memory: 'maintaining your persistent notes across conversations (memory)',
   todo: 'maintaining a visible task list for this conversation (todo_write)',
   goal: 'setting and tracking a persistent session goal with automatic continuation (goal)'
@@ -345,11 +363,16 @@ async function computeTurnRegSignature(topicId: string): Promise<string> {
  * 的工具集哈希（getToolsetSignature 走 listTools 缓存，服务器不可达 → 'unreachable'）
  * 折叠成单串。仅同步自渲染层的配置缺失也编码进签名（missing），配置到位后下一轮
  * 自然漂移重挂。无 mcp 单元返回 ''。
+ *
+ * 返回值同时带 `anyUnreachable`：有服务器处于不可达态时，签名会随 'unreachable' 占位
+ * 逐轮翻转，消费方（发送热路径的漂移判定）必须跳过该维度——否则 MCP 暂时失联会被
+ * 放大成每轮 dispose + 整会话 resume 的 O(n) 重放。
  */
-async function computeMcpSignature(externals: string[]): Promise<string> {
+async function computeMcpSignature(externals: string[]): Promise<{ signature: string; anyUnreachable: boolean }> {
   const mcpIds = externals.filter((extId) => extId.startsWith('mcp:'))
-  if (mcpIds.length === 0) return ''
+  if (mcpIds.length === 0) return { signature: '', anyUnreachable: false }
   const parts: string[] = []
+  let anyUnreachable = false
   for (const extId of mcpIds) {
     const server = mcpService.getServerById(extId.slice('mcp:'.length))
     if (server === undefined) {
@@ -357,9 +380,13 @@ async function computeMcpSignature(externals: string[]): Promise<string> {
       continue
     }
     const signature = await mcpService.getToolsetSignature(server).catch(() => 'unreachable')
+    if (signature === 'unreachable') anyUnreachable = true
     parts.push(`${extId}=${signature}`)
   }
-  return createHash('sha256').update(parts.join('|')).digest('hex').slice(0, 16)
+  return {
+    signature: createHash('sha256').update(parts.join('|')).digest('hex').slice(0, 16),
+    anyUnreachable
+  }
 }
 
 /**
@@ -723,6 +750,15 @@ export function getTopic(id: string): KernelTopic | undefined {
   return topics.get(id)
 }
 
+/**
+ * 会话 id → 上下文预算（contextBudget.ts 中性门的解析器，boot 时注入）。
+ * sessionId === 话题 id（dsh-agent-loop 把 session.id 原样放进请求）；
+ * 未登记 = undefined = 门透传（不限预算）。lightLlm 等非注册表会话天然 miss。
+ */
+export function contextCountForSession(sessionId: string): number | undefined {
+  return topics.get(sessionId)?.contextCount
+}
+
 /** 新建话题：注册表登记 + 建 agent/session。话题已存在时原地更新路由配置（保留 name/createdAt）。 */
 export async function createTopic(ctx: Context, input: KernelTopicInput): Promise<KernelTopic> {
   const now = Date.now()
@@ -744,6 +780,8 @@ export async function createTopic(ctx: Context, input: KernelTopicInput): Promis
       ? { reasoningEffort: existing.reasoningEffort }
       : {}),
     ...(input.reasoningEffort === undefined ? {} : { reasoningEffort: input.reasoningEffort }),
+    ...(existing?.contextCount !== undefined ? { contextCount: existing.contextCount } : {}),
+    ...(input.contextCount === undefined ? {} : { contextCount: input.contextCount }),
     ...(existing?.workingDir !== undefined && existing.workingDir.length > 0
       ? { workingDir: existing.workingDir }
       : {}),
@@ -828,6 +866,7 @@ export async function forkTopic(
     ...(sourceTopic.reasoningEffort === undefined || sourceTopic.reasoningEffort.length === 0
       ? {}
       : { reasoningEffort: sourceTopic.reasoningEffort }),
+    ...(sourceTopic.contextCount === undefined ? {} : { contextCount: sourceTopic.contextCount }),
     ...(sourceTopic.workingDir === undefined ? {} : { workingDir: sourceTopic.workingDir }),
     parentTopicId: sourceTopic.id
   }
@@ -1229,6 +1268,12 @@ export interface TopicSendOptions {
    */
   skills?: SkillTurnEntry[]
   /**
+   * 上下文预算（请求里允许的消息条数上限，助手 contextCount 设置）。
+   * 渲染层随发送上行刷新话题行；请求端由 contextBudget.ts 的中性门消费。
+   * 缺省/undefined = 行上既有值（建册时落位）或无限（不裁剪）。
+   */
+  contextCount?: number
+  /**
    * 文档阅读：本轮 read_document 工具可读的文档清单（触发消息 FILE 附件）。
    * 渲染层随 builtinTools='read_document' 一并上行；缺省/undefined = 本轮无文档
    * 附件，工具执行侧防线拒答（名清单进 RuntimeContextProjection 快照节）。
@@ -1329,25 +1374,39 @@ export async function sendMessage(ctx: Context, id: string, text: string, option
   // MCP 漂移签名：本轮期望工具集哈希 vs 活体挂载时快照——服务器配置/工具
   // 清单变化时 id 清单不变，靠签名差异触发重挂（computeMcpSignature 走 listTools 缓存，
   // 失败按 'unreachable' 计，服务恢复后下一轮自动重挂）。
-  const desiredMcpSignature = await computeMcpSignature(externals)
+  const desiredMcp = await computeMcpSignature(externals)
+  // 服务器不可达（anyUnreachable）时跳过 MCP 签名维度：'unreachable' 占位会让签名
+  // 随失联/恢复逐轮翻转，照判会把 MCP 暂时失联放大成每轮 dispose + 整会话 resume
+  // 的 O(n) 重放（发送热路径卡顿）。沿用旧挂载快照，服务恢复后下一轮按真签名重挂。
+  const mcpSignatureForCompare =
+    mountedState !== undefined && desiredMcp.anyUnreachable ? mountedState.mcpSignature : desiredMcp.signature
   // 每轮登记漂移签名：技能/文档/记忆清单跨轮变更同样 id 不变、靠签名触发重挂
   //（登记已在本函数开头写入，快照节由重挂后的 setup 重建）。
   const desiredTurnRegSignature = await computeTurnRegSignature(id)
   if (
     handle !== undefined &&
     (mountedState === undefined ||
-      !mountedStateEquals(mountedState, builtins, externals, desiredMcpSignature, desiredTurnRegSignature) ||
+      !mountedStateEquals(mountedState, builtins, externals, mcpSignatureForCompare, desiredTurnRegSignature) ||
       mountedState.systemPrompt !== desiredPrompt)
   ) {
-    await handle.dispose()
-    liveHandles.delete(id)
-    liveAgentRoute.delete(id)
-    mountedTools.delete(id)
+    // 回合在跑：dispose 会打断进行中的请求（ensureAgent 路由漂移的同款裁决）——
+    // 本轮沿用旧活体（会话已持久化），漂移留给下一轮无运行回合时收口。
+    if (isTopicRunning(ctx, id)) {
+      logger.warn(
+        `kernel: topic "${id}" tool-face drift detected while a turn is running; keeping the live agent, remount deferred to the next turn`
+      )
+    } else {
+      await handle.dispose()
+      liveHandles.delete(id)
+      liveAgentRoute.delete(id)
+      mountedTools.delete(id)
+    }
   }
   const agent = await openTopic(ctx, id, { builtins, externals })
   const topic = topics.get(id)
   if (topic !== undefined) {
     if (options?.reasoningEffort !== undefined) topic.reasoningEffort = options.reasoningEffort
+    if (options?.contextCount !== undefined) topic.contextCount = options.contextCount
     if (externals.length > 0) {
       applyWorkModeTier(agent, options?.tier ?? 'read-only')
     } else {
@@ -1903,7 +1962,7 @@ async function ensureAgent(
   mountedTools.set(topic.id, {
     builtins: builtinsMounted,
     externals: externalsMounted,
-    mcpSignature: await computeMcpSignature(externalsMounted),
+    mcpSignature: (await computeMcpSignature(externalsMounted)).signature,
     // 与上方快照节同源（登记已在 sendMessage 开头写入；话题直开轮为既有登记/空）
     turnRegSignature: await computeTurnRegSignature(topic.id),
     systemPrompt: topic.systemPrompt ?? ''

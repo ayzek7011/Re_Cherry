@@ -14,7 +14,10 @@ import { useNavbarPosition } from './hooks/useSettings'
 // 首页（默认路由）保持静态导入：它就是首屏本身，懒加载只会换来一次不必要的空屏闪烁，
 // 且其子树（消息/Markdown/输入栏）本来就必须在启动时可用。
 import HomePage from './pages/home/HomePage'
-import { OnboardingPage } from './pages/onboarding'
+
+// Onboarding 懒加载：静态链 OnboardingPage → WelcomePage → ProviderPopup → ProviderList →
+// ModelNotesPopup → MarkdownEditor → rehype-katex 把 katex/ModelSettings/ProviderList 约 830KB
+// 拖进首屏 eager 图，而 onboarding 只在首次安装前渲染一次（React.lazy 路由级分割先例见下）。
 
 // v1 启动优化（包体实测：首屏 eager 约 21MB rendered）：其余页面路由级分割。
 // 每个页面连同其专属重依赖（RichEditor/tiptap、CodeMirror、dnd、xyflow、各设置面板）
@@ -29,6 +32,7 @@ const NotesPage = lazy(() => import('./pages/notes/NotesPage'))
 const MinAppPage = lazy(() => import('./pages/apps/MinAppPage'))
 const MinAppsPage = lazy(() => import('./pages/apps/MinAppsPage'))
 const CodeCliPage = lazy(() => import('./pages/code/CodeCliPage'))
+const OnboardingPage = lazy(() => import('./pages/onboarding').then((m) => ({ default: m.OnboardingPage })))
 
 /** 路由懒加载占位：页面形状的骨架（不用空白屏；静默不可见是最差失败形态）。 */
 const RouteLoadingFallback: FC = () => (
@@ -65,7 +69,11 @@ const Router: FC = () => {
   }, [])
 
   if (!onboardingCompleted) {
-    return <OnboardingPage onComplete={completeOnboarding} />
+    return (
+      <Suspense fallback={<RouteLoadingFallback />}>
+        <OnboardingPage onComplete={completeOnboarding} />
+      </Suspense>
+    )
   }
 
   if (navbarPosition === 'left') {

@@ -8,7 +8,7 @@
  */
 import type { Citation } from '@renderer/types'
 import { findCitationNumberInChildren } from '@renderer/utils/markdown'
-import { omit } from 'lodash'
+import { omit } from 'lodash-es'
 import React, { use, useMemo } from 'react'
 import type { Node } from 'unist'
 

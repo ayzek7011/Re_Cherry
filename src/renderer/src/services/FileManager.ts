@@ -2,6 +2,7 @@ import { loggerService } from '@logger'
 import db from '@renderer/databases'
 import i18n from '@renderer/i18n'
 import store from '@renderer/store'
+import { setFilesPath, setResourcesPath } from '@renderer/store/runtime'
 import type { FileMetadata } from '@renderer/types'
 import { FILE_TYPE } from '@renderer/types'
 import { getFileDirectory, getFileExtension } from '@renderer/utils'
@@ -9,6 +10,19 @@ import { documentExts, imageExts, textExts } from '@shared/config/constant'
 import dayjs from 'dayjs'
 
 const logger = loggerService.withContext('FileManager')
+
+/**
+ * 路径地基（问题2候选1）的模块级缓存。
+ *
+ * 此前路径重建的唯一真值是 Redux `runtime.filesPath`：不持久化、启动异步赋值一次、
+ * 只在主窗口 useAppInit 调用——mini 窗口永远是 ''，赋值前/赋值失败后的任何消费方
+ * 都拼出 `'' + '/' + id + ext` 的坏路径且无信号。现在引导收口到 FileManager：
+ * `syncRuntimePaths()` 幂等拉取 getAppInfo（失败重试一次），同时自持缓存并 dispatch
+ * 进 Redux（UI 响应式消费方据此重渲染）。主窗口与 mini 窗口入口都调用它；
+ * 定位/打开等动作路径先 await 它再重建路径。
+ */
+let filesPathCache = ''
+let runtimePathsPromise: Promise<string> | null = null
 
 /** 后缀 → 分类（与主进程 `getFileType` 同源：同一批 `@shared/config/constant` 名单）。 */
 const EXT_TYPE_MAP = new Map<string, FileMetadata['type']>([
@@ -44,6 +58,35 @@ export function repairLegacyDownloadedFile(file: FileMetadata): FileMetadata | n
 }
 
 class FileManager {
+  /**
+   * 拉取并广播运行时路径（filesPath/resourcesPath）。幂等：缓存命中即返回；
+   * 失败重试一次，最终失败返回 '' 并记 warn 取证——调用方必须把 '' 当
+   * "路径不可用"处理（提示用户），不得当成合法路径拼 URL。
+   */
+  static async syncRuntimePaths(): Promise<string> {
+    if (filesPathCache) return filesPathCache
+    if (!runtimePathsPromise) {
+      runtimePathsPromise = (async () => {
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          try {
+            const info = await window.api.getAppInfo()
+            filesPathCache = info.filesPath
+            store.dispatch(setFilesPath(info.filesPath))
+            store.dispatch(setResourcesPath(info.resourcesPath))
+            return info.filesPath
+          } catch (error) {
+            // warn 级取证：路径地基拿不到，本会话的文件定位/图片 URL 都会坏。
+            logger.warn(`FileManager: getAppInfo failed (attempt ${attempt}/2)`, error as Error)
+          }
+        }
+        // 失败后清掉 promise：后续调用可再试（瞬时 IPC 故障不该永久废掉路径）。
+        runtimePathsPromise = null
+        return ''
+      })()
+    }
+    return runtimePathsPromise
+  }
+
   static async selectFiles(options?: Electron.OpenDialogOptions): Promise<FileMetadata[] | null> {
     return await window.api.file.select(options)
   }
@@ -133,8 +176,10 @@ class FileManager {
    *
    * （删除纪律）：返回 `Promise<boolean>`，调用方能区分成败并回滚乐观行。
    * `false` 的两种来源——行不存在（无可删）与盘上删不掉（`window.api.file.delete` 抛错）。
-   * 盘上删不掉时**不抛**：Dexie 行已删、文件列表已一致，抛出去会让 `Promise.allSettled`
-   * 记成"整条删除失败"，反而不如实报告；这里记 warn 并返回 `false` 交给批量接口计数。
+   * 先删字节、后删行：字节删不掉时行保持原状、返回 `false` 让调用方给出真实信号并可重试
+   * （旧顺序先行后字节会在字节删除失败时留下孤儿字节且无法重试）。
+   * 盘上删不掉时**不抛**：抛出去会让 `Promise.allSettled` 把它记成未处理拒绝，
+   * 这里记 warn 并返回 `false` 交给批量接口计数。
    */
   static async deleteFile(id: string, force: boolean = false): Promise<boolean> {
     const file = await this.getFile(id)
@@ -153,16 +198,19 @@ class FileManager {
       }
     }
 
-    await db.files.delete(id)
-
+    // 先删盘上字节、后删行（删除纪律）：字节删不掉时行保持原状、返回 false 让调用方
+    // 给出真实信号并可重试——旧顺序（先行后字节）会在字节删除失败时留下孤儿字节且
+    // 无法重试。字节缺失（已被外部清掉）按幂等成功处理，行照删。
     try {
       await window.api.file.delete(id + file.ext)
-      return true
     } catch (error) {
-      // warn 级：renderer 的 info 不落盘，这条是"盘上字节还在"的取证钩子。
+      // warn 级：renderer 的 info 不落盘，这条是"行还在、字节删不掉"的取证钩子。
       logger.warn('Failed to delete file bytes from disk:', error as Error)
       return false
     }
+
+    await db.files.delete(id)
+    return true
   }
 
   /**
@@ -224,6 +272,37 @@ class FileManager {
 
   static isDangerFile(file: FileMetadata) {
     return ['.sh', '.bat', '.cmd', '.ps1', '.vbs', 'reg'].includes(file.ext)
+  }
+
+  /**
+   * 修复"扩展名丢前导点"的历史行（问题2候选3）。
+   *
+   * 现场：`saveBase64Image`/`savePastedImage` 曾返回 `ext.slice(1)`（`png`），而全仓契约是
+   * **带点**扩展名——路径按 `id + ext` 拼（`getFilePath`/`readBinaryImage`/`delete`）、
+   * 类型名单是 `imageExts`（`.png`），无点行全部定位失败（文件页裂图、"找不到文件"、
+   * 重新挂附件被当不支持类型）。盘上字节名一直是 `<id>.png`（生产者拼名时 ext 本就带点），
+   * 所以把行内 `ext` 补上点即与字节对齐。幂等：仅改非空且不带点的 `ext`；
+   * 失败只记日志不改行。
+   */
+  static async repairDotlessExtRows(): Promise<number> {
+    try {
+      const candidates = await db.files
+        .filter((file) => typeof file?.ext === 'string' && file.ext !== '' && !file.ext.startsWith('.'))
+        .toArray()
+      let repaired = 0
+      for (const file of candidates) {
+        await db.files.put({ ...file, ext: '.' + file.ext.toLowerCase() })
+        repaired += 1
+      }
+      if (repaired > 0) {
+        // warn 级取证：真机要看这条（renderer 的 info 不落盘）
+        logger.warn(`FileManager: normalized ${repaired} file row(s) with dotless ext`)
+      }
+      return repaired
+    } catch (error) {
+      logger.warn('FileManager: dotless ext repair skipped', error as Error)
+      return 0
+    }
   }
 
   static getSafePath(file: FileMetadata) {

@@ -114,16 +114,24 @@ const FilesPage: FC = () => {
     }
   }
 
+  // 定位/打开不得静默吞错（问题2候选2）：openPath 失败（字节缺失/路径坏）此前是
+  // unhandled rejection，点击后界面零反馈。路径地基先到位再重建（候选1），失败 toast。
+  const handleOpenFile = async (file: FileMetadata) => {
+    try {
+      await FileManager.syncRuntimePaths()
+      await window.api.file.openPath(FileManager.getFilePath(file))
+    } catch (error) {
+      logger.warn(`Failed to open file ${file.id}`, error as Error)
+      window.toast.error(t('files.preview.error'))
+    }
+  }
+
   // 这里原来每行一条 `logger.debug('FileItem', file)`（第一个参数是 context 名而非消息）。
   // `dataSource` 没有 memo，每次渲染都会对全部文件跑一遍 map 并刷日志——纯脚手架语句，删除。
   const dataSource = sortedFiles?.map((file) => {
     return {
       key: file.id,
-      file: (
-        <span onClick={() => window.api.file.openPath(FileManager.getFilePath(file))}>
-          {FileManager.formatFileName(file)}
-        </span>
-      ),
+      file: <span onClick={() => handleOpenFile(file)}>{FileManager.formatFileName(file)}</span>,
       size: formatFileSize(file.size),
       size_bytes: file.size,
       count: file.count,

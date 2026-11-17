@@ -8,7 +8,7 @@ import { HealthStatus } from '@renderer/types/healthCheck'
 import { formatApiKeys, splitApiKeyString } from '@renderer/utils/api'
 import { serializeHealthCheckError } from '@renderer/utils/error'
 import type { TFunction } from 'i18next'
-import { isEmpty } from 'lodash'
+import { isEmpty } from 'lodash-es'
 import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 

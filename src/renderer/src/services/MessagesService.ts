@@ -244,7 +244,7 @@ export async function getMessageTitle(message: Message, length = 30): Promise<st
   return title
 }
 
-export function checkRateLimit(assistant: Assistant): boolean {
+export function checkRateLimit(assistant: Assistant, topicId: string): boolean {
   const provider = getAssistantProvider(assistant)
 
   // 助手模型与默认模型都指不到现存 provider 时，无法确定限流值。
@@ -259,7 +259,8 @@ export function checkRateLimit(assistant: Assistant): boolean {
     return false
   }
 
-  const topicId = assistant.topics[0].id
+  // 限流判据按**调用方所在话题**取末条消息时间。此前固定用 topics[0]——用户在第二个
+  // 及以后的话题里发消息时，检查的是另一个话题的节奏，限流既漏报也误报。
   const messages = selectMessagesForTopic(store.getState(), topicId)
 
   if (!messages || messages.length <= 1) {

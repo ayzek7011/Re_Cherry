@@ -12,12 +12,13 @@
 | 剪贴板 | `PasteService` 同时有文本与图片时优先文本。要改需先做新的粘贴解析器 |
 | `Provider.isNotSupport*` | 看着像废弃字段，实际是迁移输入与在线 UI 输入。不要删 |
 | 全局记忆 | 已移除。唯一记忆面是文件记忆：`memory` 工具在工作模式运行，每轮注入 `FACT.md` |
-| `lodash` | 保持 CommonJS。别名映射到 `lodash-es` 要加依赖，收益很小 |
+| `lodash` | 渲染层已整体迁移到 `lodash-es`（tree-shake，见 1.2.0 首屏基线）；主进程保持 CommonJS `lodash`（`electron.vite.config.ts` 按 dependencies 外置）。`messageTranslate.ts` 的 `DebouncedFuncLeading` 类型从 `@types/lodash` 的 `lodash` 取（`@types/lodash-es` 不转发该类型；type-only import 编译期擦除，无运行时双实例） |
 | Shiki | 带全部语言语法，每份语法是懒 chunk。出网子集能省磁盘，但生僻语言会退化成纯文本 |
 | `ComposerToolRuntime` | 保留三个惰性的 V2 对等占位。绘画 composer 消费它们 |
 | `ImageViewer` | 接受 `_` 前缀的未用 props，为了 antd 兼容 |
 | Windows 沙箱子进程 | 用 `CREATE_NEW_CONSOLE` + `STARTF_USESHOWWINDOW(SW_HIDE)`。受限令牌方案禁止 `CREATE_NO_WINDOW`，用了子进程会以 `0xC0000142` 死掉。不要换成 `windowsHide` |
 | 截图工具 | 未实现 |
+| 备份对运行中数据库的一致性 | `BackupManager.backup` 在应用运行中直拷 Chromium 的 `IndexedDB`/`Local Storage`（LevelDB）目录，不是停机快照。LevelDB 按崩溃恢复语义丢弃撕裂的 log 尾部：老数据不受损，最坏丢最近未 checkpoint 的写入。上游同行为。真一致快照需要 renderer 静默机制，与收益不成比例，不做。瞬时文件锁（EBUSY/EPERM）已用 `copyDirWithTransientRetry` 短重试兜住 |
 
 ## 已知行为边界
 
@@ -54,6 +55,28 @@ store 收到的是增量而不是全文。**不要重新整篇解析每条消息
 | store chunk | 2,051,058 |
 | 快捷助手窗口首屏 | 9,361,193 |
 | `out/renderer` 资源文件数 | 896 |
+
+1.2.0 的基线（懒化弹窗链与 locale、lodash-es 迁移后的实测，同口径）：
+
+| 项 | 字节 | 对 0.5.2 |
+|---|---|---|
+| FACE A | 9,538,109 | −22.9% |
+| FACE B | 9,350,057 | −23.3% |
+| store chunk | 1,977,240 | −3.6% |
+| 快捷助手窗口首屏 | 8,013,650 | −14.4% |
+| trace 窗口首屏 | 6,440,219 | — |
+| `out/renderer` 资源文件数 | 946 | +50（懒化拆分的必然结果，不在首屏面） |
+
+1.2.0 懒化的清单（回退这些改动前先测首屏面）：`OnboardingPage` 整链（Router.tsx）、
+`ErrorDetailModal`（ErrorBlock/ProviderSetting/ModelListItem 三入口处理器内动态 import）、
+CodeMirror 链（`HtmlArtifactsCard` 弹窗、`view.tsx` 的 `CodeEditor`、`CodeStyleProvider` 的
+`@uiw/codemirror-themes-all`，全部动态）、`SelectModelPopup`（MessageMenubar/Chat/SelectModelButton）、
+`AssistantSettingsPopup`/`AgentSettingsPopup`（Navbar/Tabs/AssistantItem/Prompt/TopicContent 五入口）、
+`ObsidianExportPopup`（MessageMenubar/Topics）、`InspectMessagePopup` 与附件预览（MessageMenubar/useAttachment）、
+franc-min（translate.detectLanguage）、browser-image-compression（utils/image.compressImage）、
+zh-cn 语言包（`initI18n` 动态装载，en-US 是静态兜底语言）。
+剩余的大块（antd `es-*`、react-dom `en_US`、store、jsx-runtime、MessageErrorBoundary 的 Markdown 全套）
+是有意保留或有结构成本，见调查报告 `docs/v1.2-investigation-issue5-chunks.md`。
 
 KaTeX 与 MathJax 是懒加载。Vite 仍为 KaTeX chunk 写 `modulepreload` 提示，
 所以那次改动省的是解析与执行，不是文件读取。

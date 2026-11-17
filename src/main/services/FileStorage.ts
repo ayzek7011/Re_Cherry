@@ -195,7 +195,7 @@ class FileStorage {
     })
   }
 
-  private findDuplicateFile = async (filePath: string): Promise<FileMetadata | null> => {
+  private findDuplicateFile = async (filePath: string, originName?: string): Promise<FileMetadata | null> => {
     const stats = await fs.promises.stat(filePath)
     logger.debug(`stats: ${stats}, filePath: ${filePath}`)
     const fileSize = stats.size
@@ -228,10 +228,12 @@ class FileStorage {
         const id = path.basename(file, ext)
         const type = await this.getFileType(filePath)
 
+        // `name` 是仓内文件名（单后缀）——此前 `file + ext` 拼出 `uuid.png.png`，
+        // getFileUrl 按 name 建 URL 直接裂图；`origin_name` 透传上传方的原始名。
         return {
           id,
-          origin_name: file,
-          name: file + ext,
+          origin_name: originName ?? file,
+          name: file,
           path: storedFilePath,
           created_at: storedStatsItem.birthtime.toISOString(),
           size: storedStatsItem.size,
@@ -305,7 +307,7 @@ class FileStorage {
 
   public uploadFile = async (_: Electron.IpcMainInvokeEvent, file: FileMetadata): Promise<FileMetadata> => {
     const filePath = file.path
-    const duplicateFile = await this.findDuplicateFile(filePath)
+    const duplicateFile = await this.findDuplicateFile(filePath, file.origin_name ?? path.basename(file.path))
 
     if (duplicateFile) {
       return duplicateFile
@@ -367,10 +369,14 @@ class FileStorage {
   }
 
   public deleteFile = async (_: Electron.IpcMainInvokeEvent, id: string): Promise<void> => {
-    if (!fs.existsSync(path.join(this.storageDir, id))) {
+    const filePath = path.join(this.storageDir, id)
+    if (!fs.existsSync(filePath)) {
+      // 终态（无字节）已达成，按幂等删除返回成功；但行还在而字节缺失是数据不一致，
+      // warn 落盘取证（renderer 的 info 不落盘）。
+      logger.warn(`FileStorage.deleteFile: bytes not found for ${id}, treating as already deleted`)
       return
     }
-    await fs.promises.unlink(path.join(this.storageDir, id))
+    await fs.promises.unlink(filePath)
   }
 
   public deleteDir = async (_: Electron.IpcMainInvokeEvent, id: string): Promise<void> => {
@@ -725,7 +731,7 @@ class FileStorage {
         path: destPath,
         created_at: new Date().toISOString(),
         size: buffer.length,
-        ext: ext.slice(1),
+        ext,
         type: getFileTypeByExt(ext),
         count: 1
       }
@@ -836,7 +842,7 @@ class FileStorage {
         path: destPath,
         created_at: new Date().toISOString(),
         size: stats.size,
-        ext: ext.slice(1),
+        ext,
         type: getFileTypeByExt(ext),
         count: 1
       }

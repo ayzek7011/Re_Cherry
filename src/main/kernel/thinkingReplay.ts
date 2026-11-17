@@ -36,13 +36,13 @@ import { loggerService } from '@logger'
 const logger = loggerService.withContext('KernelThinkingReplay')
 
 /** dsh 注入快照的稳定前缀（dsh 系统提示词自述约定；fork sessionEventView 同源）。 */
-const SNAPSHOT_PREFIX = 'Current runtime context.'
+export const SNAPSHOT_PREFIX = 'Current runtime context.'
 
 /** 中性门（补丁侧）约定的全局键。 */
 export const GATE_KEY = '__recTrimPriorTurnThinking' as const
 
 /** dsh 消息的最小形状（只读判别用，不做完整类型断言）。 */
-interface AnyMessage {
+export interface AnyMessage {
   role?: unknown
   source?: { kind?: unknown } | undefined
   content?: unknown
@@ -73,12 +73,15 @@ function isToolResultMessage(message: AnyMessage): boolean {
 }
 
 /** 注入式 runtime 快照（user-role，文本以约定前缀开头）。 */
-function isSnapshotMessage(message: AnyMessage): boolean {
+export function isSnapshotMessage(message: AnyMessage): boolean {
   return firstTextOf(message).startsWith(SNAPSHOT_PREFIX)
 }
 
-/** 合格边界：真实用户消息（排除工具结果与注入快照）。 */
-function isTurnStartMessage(message: AnyMessage): boolean {
+/**
+ * 合格边界：真实用户消息（排除工具结果与注入快照）。
+ * 上下文预算裁剪（contextBudget.ts）复用同一份 dsh 词表——"回合从哪开始"只有一种真相。
+ */
+export function isTurnStartMessage(message: AnyMessage): boolean {
   if (message.role !== 'user') return false
   if (isToolResultMessage(message)) return false
   if (isSnapshotMessage(message)) return false

@@ -174,6 +174,66 @@ describe('ocrTurnDocument（三轮：挂进文档处理通道，按通道服务�
   })
 })
 
+describe('readDocumentFromDisk（documents_extract markitdown 臂：按路径直取，与附件线同权）', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('正常路径：extractFromFile 按传入路径直取，name 取 basename', async () => {
+    vi.mocked(extractFromFile).mockResolvedValue({ text: '磁盘文档正文', source: 'report.docx' })
+
+    const result = await service().readDocumentFromDisk('D:/docs/report.docx')
+
+    expect(extractFromFile).toHaveBeenCalledWith('D:/docs/report.docx', { signal: undefined })
+    expect(result).toEqual({ name: 'report.docx', text: '磁盘文档正文' })
+  })
+
+  it('空抽取：中性提示出口与附件读一致（不静默成功）', async () => {
+    vi.mocked(extractFromFile).mockResolvedValue({ text: '   ', source: 'empty.pdf' })
+
+    const result = await service().readDocumentFromDisk('D:/docs/empty.pdf')
+    expect(result.name).toBe('empty.pdf')
+    expect(result.text).toBe('(No extractable text — the document may be empty, scanned, or in an unreadable format.)')
+  })
+})
+
+describe('processDocumentFromDisk（documents_extract 文档处理臂：与 ocrTurnDocument 共用内核）', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('正常路径：按本轮登记的服务商路由，name 取 basename', async () => {
+    vi.mocked(preprocessChannel.getTurnProviderId).mockReturnValue('mineru')
+    vi.mocked(preprocessChannel.getConfig).mockImplementation((id) =>
+      id === 'mineru' ? { id: 'mineru', apiKey: 'k', apiHost: 'https://mineru.net' } : undefined
+    )
+    vi.mocked(parsePdfWithProvider).mockResolvedValue('磁盘扫描件全文')
+
+    const result = await service().processDocumentFromDisk('topic-disk', 'D:/docs/scan.pdf')
+
+    expect(parsePdfWithProvider).toHaveBeenCalledWith(
+      { id: 'mineru', apiKey: 'k', apiHost: 'https://mineru.net' },
+      'D:/docs/scan.pdf',
+      expect.any(AbortSignal)
+    )
+    expect(result).toEqual({ name: 'scan.pdf', text: '磁盘扫描件全文' })
+  })
+
+  it('非 PDF：如实报错（通道只接 PDF）', async () => {
+    await expect(service().processDocumentFromDisk('topic-disk', 'D:/docs/notes.docx')).rejects.toThrow(
+      'only supports PDF'
+    )
+  })
+
+  it('服务商未登记：如实报错（渲染层载荷门失守时的执行侧防线）', async () => {
+    vi.mocked(preprocessChannel.getTurnProviderId).mockReturnValue(undefined)
+
+    await expect(service().processDocumentFromDisk('topic-disk', 'D:/docs/scan.pdf')).rejects.toThrow(
+      /no document-processing provider is registered/
+    )
+  })
+})
+
 describe('processItem PDF 路由（V2 对齐：配置即路由，2026-09-22 用户裁决）', () => {
   beforeEach(() => {
     vi.clearAllMocks()

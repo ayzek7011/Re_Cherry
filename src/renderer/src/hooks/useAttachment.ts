@@ -1,5 +1,4 @@
 import { loggerService } from '@logger'
-import TextFilePreviewPopup from '@renderer/components/Popups/TextFilePreview'
 import type { FileType } from '@renderer/types'
 import { FILE_TYPE } from '@renderer/types'
 import { useTranslation } from 'react-i18next'
@@ -21,6 +20,8 @@ export function useAttachment() {
         if (ext?.startsWith('.')) {
           ext = ext.replace('.', '')
         }
+        // 文本预览弹窗拖入 CodeEditor：低频点击路径动态装载，不进首屏静态图。
+        const { default: TextFilePreviewPopup } = await import('@renderer/components/Popups/TextFilePreview')
         void TextFilePreviewPopup.show(content, title, ext)
       } else {
         void window.api.file.openPath(path)

@@ -1,6 +1,6 @@
 import { useAllProviders, useProviders } from '@renderer/hooks/useProvider'
 import type { Model, Provider } from '@renderer/types'
-import { sortBy } from 'lodash'
+import { sortBy } from 'lodash-es'
 import React, { useMemo } from 'react'
 
 import SelectModelPopupView, { createModelPopup } from './base-popup'

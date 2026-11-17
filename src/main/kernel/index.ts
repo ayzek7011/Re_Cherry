@@ -47,6 +47,7 @@ import {
   IMAGE_MEDIA_TYPES,
   parseImageAttachmentRef
 } from './attachments'
+import { installContextBudgetGate } from './contextBudget'
 import { CherryCredentialProvider } from './credentials'
 import { DocumentKernelService } from './documentKernelService'
 import { registerDsmlRepair } from './dsmlRepair'
@@ -68,7 +69,15 @@ import { SkillKernelService } from './skillKernelService'
 import { installThinkingReplayTrim } from './thinkingReplay'
 import { isTopicNotFoundError } from './topicNotFoundError'
 import type { TopicSendOptions } from './topics'
-import { clearLiveHandles, getTopic, initTopics, listTopicBranches, listTopics, searchSessions } from './topics'
+import {
+  clearLiveHandles,
+  contextCountForSession,
+  getTopic,
+  initTopics,
+  listTopicBranches,
+  listTopics,
+  searchSessions
+} from './topics'
 import { WebSearchKernelService } from './webSearchService'
 
 const logger = loggerService.withContext('Kernel')
@@ -198,6 +207,12 @@ export async function bootKernel(): Promise<Context> {
     // （globalThis.__recRequestImageHandleText）改写为中文短锚 `图片N (WxHpx)`；
     // 钩子缺失/形状不认识 = 上游原样（零行为差异）。
     installRequestImageHandleAnchor()
+    // 上下文预算门（见 contextBudget.ts）：同一补丁文件的第三个中性门
+    // （globalThis.__recApplyContextBudget）。渲染层随建册/发送上行助手的 contextCount
+    // （上下文消息条数），请求端按条数裁掉最旧历史，防大对话每 step 全量
+    // deriveMessages 触发 provider 上限拒绝（问题 1 R1）。门缺失/未登记/预算不限
+    // = 零行为差异；裁剪只在 wire 层，会话库与渲染层投影不动。
+    installContextBudgetGate(contextCountForSession)
     // 响应端工具调用修复：挂在 dsh 文档化的 `llm/stream` waterfall 上，
     // agent-loop 的 ctx.llm.stream / prepareCall().stream 两条路径都经此，恒开不受开关约束。
     // DSML 修复自身不走补丁（移除了当时的 dsh-llm-pi-ai 行为补丁）；内核包上现存的
@@ -576,6 +591,7 @@ function registerKernelIpc(): () => void {
         maxTokens?: number
         systemPrompt?: string
         reasoningEffort?: string
+        contextCount?: number
         workingDir?: string
       }
     ) => {
@@ -624,6 +640,7 @@ function registerKernelIpc(): () => void {
       text: string,
       options?: {
         reasoningEffort?: string
+        contextCount?: number
         builtinTools?: string[]
         externalTools?: string[]
         tier?: WorkModeApprovalTier
@@ -648,6 +665,16 @@ function registerKernelIpc(): () => void {
           throw new Error('kernel: invalid reasoningEffort in topic send options')
         }
         cleanOptions.reasoningEffort = options.reasoningEffort
+      }
+      if (options?.contextCount !== undefined) {
+        if (
+          typeof options.contextCount !== 'number' ||
+          !Number.isFinite(options.contextCount) ||
+          options.contextCount <= 0
+        ) {
+          throw new Error('kernel: invalid contextCount in topic send options')
+        }
+        cleanOptions.contextCount = options.contextCount
       }
       if (options?.tier !== undefined) {
         if (!isWorkModeApprovalTier(options.tier)) {

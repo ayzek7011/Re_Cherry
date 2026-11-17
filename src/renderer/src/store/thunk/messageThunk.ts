@@ -32,7 +32,7 @@ import { getTopicQueue, waitForTopicQueue } from '@renderer/utils/queue'
 import { isRestoredTopicRow } from '@renderer/utils/topicBranch'
 import { BUILTIN_TOOL_IDS, EXTERNAL_TOOL_IDS } from '@shared/config/agentTools'
 import { t } from 'i18next'
-import { isEmpty, throttle } from 'lodash'
+import { isEmpty, throttle } from 'lodash-es'
 import { LRUCache } from 'lru-cache'
 
 import type { AppDispatch, RootState } from '../index'
@@ -336,6 +336,7 @@ const fetchAndProcessAssistantResponseImpl = async (
               .map((server) => `mcp:${server.id}`)
       await kernelChat.sendToKernel(topicId, text, assistantMsgId, triggeringUserMessage.id, {
         reasoningEffort: kernelChat.assistantReasoningLevel(assistant),
+        contextCount: kernelChat.assistantContextCount(assistant),
         builtinTools,
         externalTools: [
           ...(topic?.workMode === true
@@ -385,18 +386,24 @@ const fetchAndProcessAssistantResponseImpl = async (
                 }))
             }
           : {}),
-        // 文档阅读：本轮附件文档清单（展示名 + 绝对路径）。
+        // 文档阅读：本轮附件文档清单（展示名 + 绝对路径）。仅在附件轮上行——
+        // read_document/ocr_document 的每轮登记（附件线）。
         ...(documentsActive
           ? {
               documents: documentFiles.map((file) => ({
                 name: file.origin_name || file.name,
                 path: file.path,
                 ext: file.ext
-              })),
-              // 文档处理通道：本轮 ocr_document 的服务商 = 设置 → 文档处理
-              // 的默认服务商（配置本体经 Dsh_SyncPreprocess 整体投影，这里只上行 id）。
-              preprocess: { providerId: getState().preprocess.defaultProvider }
+              }))
             }
+          : {}),
+        // 文档处理通道：本轮 OCR 服务商 = 设置 → 文档处理的默认服务商（配置本体经
+        // Dsh_SyncPreprocess 整体投影，这里只上行 id）。载荷门与 OCR 能力合并挂载门
+        // **严格同形**（payload 门 = 挂载门不变量）：附件轮的 ocr_document，或工作模式轮
+        // 的 documents_extract 文档处理臂。多登 = 死登记，少登 = 挂了工具执行必拒。
+        ...((documentsActive && ocrEnabled) ||
+        (topic?.workMode === true && assistant.externalTools?.documentsExtract !== false)
+          ? { preprocess: { providerId: getState().preprocess.defaultProvider } }
           : {}),
         // 聊天生图：本轮绘画模型登记（generate_image 工具执行时按 topicId 反查）。
         ...(generateImageActive && paintingModel
@@ -409,7 +416,11 @@ const fetchAndProcessAssistantResponseImpl = async (
           : {})
       })
     } else {
-      logger.error('kernelChat: triggering user message not found, skipping send')
+      // 触发消息不存在（消息被删/重发竞态等）：此前只记一行日志就返回——loading 已在
+      // 上方置 true、stub 消息已入册，话题永远转圈、stub 永远 PENDING 零块（失败伪装成
+      // 空结果）。上抛交给既有 catch 做等价终态（错误块 + ERROR 状态 + loading 复位）；
+      // endSpan 对尚不存在的 span 是 no-op，安全。
+      throw new Error('Triggering user message not found, cannot send assistant response')
     }
   } catch (error: any) {
     logger.error('Error in fetchAndProcessAssistantResponseImpl:', error)

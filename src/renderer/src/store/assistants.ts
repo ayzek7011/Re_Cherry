@@ -22,7 +22,7 @@ import { getDefaultAssistant, getDefaultTopic } from '@renderer/services/Assista
 import type { Assistant, AssistantSettings, Model, Topic } from '@renderer/types'
 // 血缘闭包与父→子索引只存在一份（`utils/topicBranch`），本切片的删除路径直接复用。
 import { collectSubtreeIds } from '@renderer/utils/topicBranch'
-import { isEmpty, uniqBy } from 'lodash'
+import { isEmpty, uniqBy } from 'lodash-es'
 
 import type { RootState } from '.'
 

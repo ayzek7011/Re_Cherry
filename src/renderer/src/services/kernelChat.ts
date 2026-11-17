@@ -1,6 +1,7 @@
 import type { StreamChunk } from '@deepseek-ai/dsh-llm'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { loggerService } from '@logger'
+import { DEFAULT_CONTEXTCOUNT, MAX_CONTEXT_COUNT, UNLIMITED_CONTEXT_COUNT } from '@renderer/config/constant'
 import { isVisionModel } from '@renderer/config/models'
 import { providerReasoningCompat, type ReasoningCompatProviderInput } from '@renderer/config/reasoningCompat'
 import i18n from '@renderer/i18n'
@@ -417,6 +418,17 @@ export function assistantReasoningLevel(assistant: Assistant): string | undefine
 }
 
 /**
+ * 助手的上下文预算（请求消息条数上限）。MAX_CONTEXT_COUNT（"不限"档）折算成
+ * UNLIMITED_CONTEXT_COUNT（MessagesService 同一约定）——内核侧把 >= 该值视作不裁剪。
+ * 随建册/发送上行（问题 1 R1：渲染层预算此前从不进内核请求端）。
+ */
+export function assistantContextCount(assistant: Assistant): number {
+  const setting = assistant.settings?.contextCount
+  if (setting === undefined) return DEFAULT_CONTEXTCOUNT
+  return setting === MAX_CONTEXT_COUNT ? UNLIMITED_CONTEXT_COUNT : setting
+}
+
+/**
  * 确保内核侧存在该话题的 agent/session（幂等）。工作模式不进建册输入——它是渲染层话题开关，随发送参数生效。
  *
  * `dshTopicCreate` 是 **upsert**，对"内核已遗忘的 id"调用
@@ -463,6 +475,7 @@ export async function ensureKernelTopic(topicId: string, assistant: Assistant): 
     maxTokens: assistant.settings?.maxTokens,
     systemPrompt,
     reasoningEffort: assistantReasoningLevel(assistant),
+    contextCount: assistantContextCount(assistant),
     ...(assistant.workMode?.workingDir !== undefined && assistant.workMode.workingDir.length > 0
       ? { workingDir: assistant.workMode.workingDir }
       : {})
@@ -479,6 +492,8 @@ export async function sendToKernel(
   userMessageId?: string,
   options?: {
     reasoningEffort?: string
+    /** 上下文预算（请求消息条数上限；UNLIMITED_CONTEXT_COUNT = 不裁剪）。 */
+    contextCount?: number
     builtinTools?: string[]
     externalTools?: string[]
     tier?: WorkModeApprovalTier
@@ -627,7 +642,13 @@ function handleSessionEvent(payload: { topicId: string; event: SessionEvent }): 
 
 function startTurn(topicId: string, turn: number): void {
   const stubId = pendingStubs.get(topicId)
-  if (stubId === undefined) return
+  if (stubId === undefined) {
+    // 内核已开始一个回合，但渲染层没有可投影的 stub（发送登记被上一次失败发送清掉、
+    // 或并发发送互踩）。此前静默 return——内核在跑、界面毫无投影，用户看到消息石沉大海。
+    // 记 warn 取证；本回合的终态收口由 finishTurn 的无状态分支完成（清 loading/孤儿 stub）。
+    logger.warn(`kernelChat: turn/start for topic "${topicId}" (turn ${turn}) has no pending stub to project`)
+    return
+  }
 
   // 暂停机制的唯一真相源：回合开始即建立记录（回合结束清掉，见 finishTurn 的 endTurn）。
   beginTurn(topicId, turn, stubId)
@@ -1217,6 +1238,39 @@ function finishTurn(topicId: string, reason: { kind: string; error?: { message: 
     // 本回合的簿记必须收口——否则未回执的 FIFO 条目会污染下一回合的回执配对。
     // 暂停记录也在这一处清掉（endTurn 是唯一的清理点，不存在残留闭包）。
     pendingUserIds.delete(topicId)
+    // 未认领的 stub（发送已登记、turn/start 从未认领）：turn 已结束，stub 却永远停在
+    // PENDING 零块、话题 loading 永远挂着（失败伪装成空结果）。就地落 ERROR 终态，
+    // 语义与下方 state-present 分支一致：error 回合用引擎错误，否则按空响应。
+    const orphanStubId = pendingStubs.get(topicId)
+    if (orphanStubId !== undefined) {
+      const failedTurn = reason.kind === 'error'
+      const orphanErrorBlock = createErrorBlock(
+        orphanStubId,
+        failedTurn ? serializedTurnError(reason) : serializedEmptyTurn()
+      )
+      store.dispatch(upsertManyBlocks([orphanErrorBlock]))
+      store.dispatch(
+        newMessagesActions.upsertBlockReference({
+          messageId: orphanStubId,
+          blockId: orphanErrorBlock.id,
+          status: orphanErrorBlock.status,
+          blockType: orphanErrorBlock.type
+        })
+      )
+      store.dispatch(
+        newMessagesActions.updateMessage({
+          topicId,
+          messageId: orphanStubId,
+          updates: { blocks: [orphanErrorBlock.id], status: AssistantMessageStatus.ERROR }
+        })
+      )
+    }
+    // 话题 loading 与回合级登记照常收口（此前漏掉：turn/end 在无投影状态下到达时
+    // 话题永远转圈）。
+    store.dispatch(newMessagesActions.setTopicLoading({ topicId, loading: false }))
+    store.dispatch(toolPermissionsActions.clearByTopic({ topicId }))
+    store.dispatch(userQuestionsActions.clearByTopic({ topicId }))
+    pendingStubs.delete(topicId)
     endTurn(topicId)
     return
   }

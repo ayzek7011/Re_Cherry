@@ -72,6 +72,10 @@ const EXTERNAL_TOOL_COPY: Record<ExternalToolId, ToolCopyKeys> = {
     name: 'settings.agentSettings.tools.externals.saveAttachment.name',
     description: 'settings.agentSettings.tools.externals.saveAttachment.description'
   },
+  documentsExtract: {
+    name: 'settings.agentSettings.tools.externals.documentsExtract.name',
+    description: 'settings.agentSettings.tools.externals.documentsExtract.description'
+  },
   memory: {
     name: 'settings.agentSettings.tools.externals.memory.name',
     description: 'settings.agentSettings.tools.externals.memory.description'

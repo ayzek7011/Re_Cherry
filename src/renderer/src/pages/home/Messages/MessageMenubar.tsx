@@ -1,9 +1,6 @@
 // import { InfoCircleOutlined } from '@ant-design/icons'
 import { loggerService } from '@logger'
 import { CopyIcon, DeleteIcon, EditIcon, RefreshIcon } from '@renderer/components/Icons'
-import InspectMessagePopup from '@renderer/components/Popups/InspectMessagePopup'
-import ObsidianExportPopup from '@renderer/components/Popups/ObsidianExportPopup'
-import { SelectChatModelPopup } from '@renderer/components/Popups/SelectModelPopup'
 import { isChatCandidateModel, isVisionModel } from '@renderer/config/models'
 import type { MessageMenubarButtonId, MessageMenubarScope } from '@renderer/config/registry/messageMenubar'
 import { DEFAULT_MESSAGE_MENUBAR_SCOPE, getMessageMenubarConfig } from '@renderer/config/registry/messageMenubar'
@@ -339,6 +336,8 @@ const MessageMenubar: FC<Props> = (props) => {
             key: 'obsidian',
             onClick: async () => {
               const title = topic.name?.replace(/\\/g, '_') || t('common.unnamed')
+              // 动态加载：ObsidianExportPopup 低频导出路径不进首屏图（exportBackends.ts 先例）
+              const { default: ObsidianExportPopup } = await import('@renderer/components/Popups/ObsidianExportPopup')
               await ObsidianExportPopup.show({ title, message, processingMethod: '1' })
             }
           },
@@ -452,6 +451,8 @@ const MessageMenubar: FC<Props> = (props) => {
   const onMentionModel = useCallback(
     async (e: React.MouseEvent) => {
       e.stopPropagation()
+      // 模型选择弹窗连带 ModelSettings/CodeEditor 链（低频入口，不进首屏静态图）。
+      const { SelectChatModelPopup } = await import('@renderer/components/Popups/SelectModelPopup')
       const selectedModel = await SelectChatModelPopup.show({ model, filter: mentionModelFilter })
       if (!selectedModel) return
       void switchModelAnswer(message, selectedModel, { ...assistant, model: selectedModel })
@@ -879,12 +880,14 @@ const buttonRenderers: Record<MessageMenubarButtonId, MessageMenubarButtonRender
       return null
     }
 
-    const handleInspect = (e: React.MouseEvent) => {
+    const handleInspect = async (e: React.MouseEvent) => {
       e.stopPropagation()
       // 点击时按需读取：不在 menubar 顶层订阅全量块实体（否则流式期间每个 token
       // 都会让所有历史消息的 menubar 重渲染）
       const blockEntities = messageBlocksSelectors.selectEntities(store.getState())
       const blocks = message.blocks.map((blockId) => blockEntities[blockId]).filter(Boolean)
+      // InspectMessagePopup 拖入 CodeEditor（低频调试入口，不进首屏静态图）。
+      const { default: InspectMessagePopup } = await import('@renderer/components/Popups/InspectMessagePopup')
       void InspectMessagePopup.show({
         title: `Message: ${message.id}`,
         message,

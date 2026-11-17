@@ -33,7 +33,7 @@ export async function pumpFollowupQueue(topicId: string): Promise<void> {
   }
 
   // 限流命中 = 发不出去：退回**队首原位**等待（不发也不丢， 前是 remove+enqueue 会被推到队尾并换新 id）。
-  if (checkRateLimit(assistant)) {
+  if (checkRateLimit(assistant, topicId)) {
     store.dispatch(requeueFollowupHead({ topicId, item: next }))
     logger.warn('followupQueue: rate limited, kept head item in place')
     return

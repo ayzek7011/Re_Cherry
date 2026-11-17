@@ -19,8 +19,9 @@ const MAX_ENCODED_BYTES = 950 * 1024
 /** 规范化最长边：对齐 pi-ai 默认请求像素预算（2048²）与内核准入的单边限制。 */
 const MAX_LONG_EDGE = 2048
 
-/** 扩展名 → wire 媒体类型（仅 v1 附件路径接受的四种；bmp 等由 canvas 转码成 png）。 */
-const MEDIA_TYPE_BY_EXT: Record<string, string> = {
+/** 扩展名 → wire 媒体类型（仅 v1 附件路径接受的四种；bmp 等由 canvas 转码成 png）。
+ *  导出复用：paintings canonicalGenerate 的 data URL 编码同源取 mime，避免第二张表。 */
+export const MEDIA_TYPE_BY_EXT: Record<string, string> = {
   png: 'image/png',
   jpg: 'image/jpeg',
   jpeg: 'image/jpeg',
@@ -125,7 +126,8 @@ async function encodeCanvas(canvas: OffscreenCanvas): Promise<EncodedCanvas> {
 export async function encodeImageFileForKernel(file: FileMetadata): Promise<KernelImageInput> {
   const record = await window.api.file.base64File(file.id + file.ext)
   const bytes = base64ToBytes(record.data)
-  const declaredType = MEDIA_TYPE_BY_EXT[file.ext.toLowerCase()]
+  // 行内 ext 是带点契约（`.png`）；wire 媒体表键不带点——查表前统一剥点。
+  const declaredType = MEDIA_TYPE_BY_EXT[file.ext.replace(/^\./, '').toLowerCase()]
 
   let bitmap: ImageBitmap
   try {
@@ -194,8 +196,13 @@ export async function syncKernelImageAttachment(ref: KernelImageRef): Promise<Fi
   if (cached !== undefined) return cached
   try {
     const { file } = await window.api.dshAttachmentSync(ref)
-    // 确定性 id：put = 幂等 upsert（重复回放/多话题引用同一附件不会膨胀文件仓）
-    await db.files.put(file)
+    // 确定性 id：put = 幂等 upsert（重复回放/多话题引用同一附件不会膨胀文件仓）。
+    // 行已存在时保留现 count：主进程返回的元数据 count 恒为 1，直接覆盖会把
+    // 其他话题的引用计数重置丢掉——一次文件页删除就提前清行清字节（删错图）。
+    // 回放不是新引用，也不递增（同话题反复打开会通胀）；本行是内核附件仓的
+    // 本地缓存，误删可由下次回放重建，count 只需不被无端破坏。
+    const existing = await db.files.get(file.id)
+    await db.files.put(existing !== undefined ? { ...file, count: existing.count } : file)
     syncedRefs.set(ref.attachmentId, file)
     return file
   } catch (error) {
@@ -230,6 +237,8 @@ export async function registerGeneratedImageFiles(images: readonly string[]): Pr
       const id = await generatedImageFileId(source)
       const existing = await db.files.get(id)
       if (existing !== undefined) {
+        // 已登记（回放/重开话题）：只回传现行，不动 count——内容寻址行是投影缓存，
+        // 回放不是新引用，递增会让反复打开的话题把 count 通胀。
         registered.push(existing)
         continue
       }

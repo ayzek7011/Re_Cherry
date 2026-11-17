@@ -1,5 +1,4 @@
 import OpenAIAlert from '@renderer/components/Alert/OpenAIAlert'
-import { showErrorDetailPopup } from '@renderer/components/ErrorDetailModal'
 import { LoadingIcon } from '@renderer/components/Icons'
 import { HStack } from '@renderer/components/Layout'
 import { ApiKeyListPopup } from '@renderer/components/Popups/ApiKeyListPopup'
@@ -33,7 +32,7 @@ import {
 import { adaptProviderApiHost } from '@renderer/utils/providerHost'
 import { Button, Divider, Flex, Input, Select, Space, Switch, Tooltip } from 'antd'
 import Link from 'antd/es/typography/Link'
-import { isEmpty } from 'lodash'
+import { isEmpty } from 'lodash-es'
 import { Bolt, Check, Settings2, SquareArrowOutUpRight, TriangleAlert } from 'lucide-react'
 import type { FC } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -341,7 +340,11 @@ const ProviderSetting: FC<Props> = ({ providerId, isOnboarding = false }) => {
             size={16}
             color="var(--color-status-warning)"
             style={{ cursor: 'pointer' }}
-            onClick={() => showErrorDetailPopup({ error: apiKeyConnectivity.error })}
+            onClick={async () => {
+              // 409KB 低频点击路径不进首屏静态图（懒加载先例 exportBackends.ts:723）。
+              const { showErrorDetailPopup } = await import('@renderer/components/ErrorDetailModal')
+              showErrorDetailPopup({ error: apiKeyConnectivity.error })
+            }}
           />
         </Tooltip>
       </>

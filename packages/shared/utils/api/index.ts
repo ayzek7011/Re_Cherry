@@ -1,5 +1,3 @@
-import { trim } from 'lodash'
-
 import { hasAPIVersion, withoutTrailingSharp, withoutTrailingSlash } from './utils'
 
 export * from './utils'
@@ -21,7 +19,9 @@ export * from './utils'
  * formatApiHost('https://api.example.com/v2', true, 'v1') // Returns 'https://api.example.com/v2'
  */
 export function formatApiHost(host?: string, supportApiVersion: boolean = true, apiVersion: string = 'v1'): string {
-  const normalizedHost = withoutTrailingSlash(trim(host))
+  // 原实现用 lodash trim(undefined) → ''；等价原生写法，避免 shared 包把全量 CJS lodash
+  // 拖进 renderer bundle（CJS 不可 tree-shake，问题5 #5）。
+  const normalizedHost = withoutTrailingSlash((host ?? '').trim())
   if (!normalizedHost) {
     return ''
   }

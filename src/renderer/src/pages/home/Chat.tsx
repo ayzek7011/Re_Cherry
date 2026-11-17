@@ -4,7 +4,6 @@ import { ContentSearch } from '@renderer/components/ContentSearch'
 import { HStack } from '@renderer/components/Layout'
 import MultiSelectActionPopup from '@renderer/components/Popups/MultiSelectionPopup'
 import PromptPopup from '@renderer/components/Popups/PromptPopup'
-import { SelectChatModelPopup } from '@renderer/components/Popups/SelectModelPopup'
 import { QuickPanelProvider } from '@renderer/components/QuickPanel'
 import { isChatCandidateModel, isWebSearchModel } from '@renderer/config/models'
 import { useAssistant } from '@renderer/hooks/useAssistant'
@@ -18,7 +17,7 @@ import { useAppSelector } from '@renderer/store'
 import type { Assistant, Model, Topic } from '@renderer/types'
 import { classNames } from '@renderer/utils'
 import { Flex } from 'antd'
-import { debounce } from 'lodash'
+import { debounce } from 'lodash-es'
 import { AnimatePresence, motion } from 'motion/react'
 import type { FC } from 'react'
 import React, { useEffect, useRef, useState } from 'react'
@@ -93,6 +92,8 @@ const Chat: FC<Props> = (props) => {
   useShortcut('select_model', async () => {
     // 与聊天窗模型钮同一个判据（键盘入口不能有第二套口径）
     const modelFilter = (m: Model) => isChatCandidateModel(m)
+    // 弹窗连带 ModelSettings/CodeEditor 链（快捷键低频入口，不进首屏静态图）。
+    const { SelectChatModelPopup } = await import('@renderer/components/Popups/SelectModelPopup')
     const selectedModel = await SelectChatModelPopup.show({
       model: assistant?.model,
       filter: modelFilter

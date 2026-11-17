@@ -1,3 +1,4 @@
+import { loggerService } from '@logger'
 import { useTheme } from '@renderer/context/ThemeProvider'
 import { useMermaid } from '@renderer/hooks/useMermaid'
 import { useSettings } from '@renderer/hooks/useSettings'
@@ -5,11 +6,21 @@ import type { HighlightChunkResult, ShikiPreProperties } from '@renderer/service
 import { shikiStreamService } from '@renderer/services/ShikiStreamService'
 import { ThemeMode } from '@renderer/types'
 import { getHighlighter, getMarkdownIt, loadLanguageAndThemeIfNeeded } from '@renderer/utils/shiki'
-import * as cmThemes from '@uiw/codemirror-themes-all'
 import type React from 'react'
-import { createContext, type PropsWithChildren, use, useCallback, useEffect, useMemo } from 'react'
+import { createContext, type PropsWithChildren, use, useCallback, useEffect, useMemo, useState } from 'react'
 import { bundledThemesInfo } from 'shiki/bundle/web'
 import type { BundledThemeInfo } from 'shiki/types'
+
+/**
+ * CodeMirror 主题表（@uiw/codemirror-themes-all ≈133KB，经主题创建静态连到
+ * @codemirror/view 全链）只在代码编辑器开启时被消费。静态 import 会把这条边拖进
+ * 每个挂 CodeStyleProvider 的首屏 eager 图。这里改为编辑器开启时动态装载；装载前
+ * themeNames 先给内置档、activeCmTheme 透传主题名（编辑器本就是懒挂载，实际渲染
+ * 编辑器时表几乎必然已就位）。
+ */
+type CmThemesRecord = Record<string, unknown>
+
+const logger = loggerService.withContext('CodeStyleProvider')
 
 /**
  * Shiki 主题元数据。
@@ -54,14 +65,34 @@ export const CodeStyleProvider: React.FC<PropsWithChildren> = ({ children }) => 
   const { theme } = useTheme()
   useMermaid()
 
+  // CodeMirror 主题表：编辑器开启时动态装载（见顶部注释）。
+  const [cmThemes, setCmThemes] = useState<CmThemesRecord | null>(null)
+  useEffect(() => {
+    if (!codeEditor.enabled) return
+    let cancelled = false
+    import('@uiw/codemirror-themes-all')
+      .then((mod) => {
+        if (!cancelled) setCmThemes(mod as unknown as CmThemesRecord)
+      })
+      .catch((error) => {
+        logger.error('Failed to load CodeMirror themes:', error as Error)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [codeEditor.enabled])
+
   // 获取支持的主题名称列表
   const themeNames = useMemo(() => {
     // CodeMirror 主题
     // 更保险的做法可能是硬编码主题列表
     if (codeEditor.enabled) {
+      if (!cmThemes) {
+        return ['auto', 'light', 'dark']
+      }
       return ['auto', 'light', 'dark']
         .concat(Object.keys(cmThemes))
-        .filter((item) => typeof cmThemes[item as keyof typeof cmThemes] !== 'function')
+        .filter((item) => typeof cmThemes[item] !== 'function')
         .filter((item) => !/^(defaultSettings)/.test(item) && !/(Style)$/.test(item))
     }
 
@@ -69,7 +100,7 @@ export const CodeStyleProvider: React.FC<PropsWithChildren> = ({ children }) => 
     // 依赖数组只有 `codeEditor.enabled`：`shikiThemesInfo` 是模块级常量（不是 props/state），
     // 放进依赖数组会被 react-hooks 规则判为"不必要的依赖"（它不参与重渲染）。
     return ['auto', ...shikiThemesInfo.map((info) => info.id)]
-  }, [codeEditor.enabled])
+  }, [codeEditor.enabled, cmThemes])
 
   // 获取当前使用的 Shiki 主题名称（只用于代码预览）
   const activeShikiTheme = useMemo(() => {
@@ -94,8 +125,12 @@ export const CodeStyleProvider: React.FC<PropsWithChildren> = ({ children }) => 
     if (!themeName || themeName === 'auto' || !themeNames.includes(themeName)) {
       themeName = theme === ThemeMode.light ? 'materialLight' : 'dark'
     }
-    return cmThemes[themeName as keyof typeof cmThemes] || themeName
-  }, [theme, codeEditor, themeNames])
+    // 主题表未装载时透传主题名：编辑器懒挂载，实际消费点在表就位后才渲染。
+    if (!cmThemes) {
+      return themeName
+    }
+    return cmThemes[themeName] || themeName
+  }, [theme, codeEditor, themeNames, cmThemes])
 
   // 自定义 shiki 语言别名
   const languageAliases = useMemo(() => {

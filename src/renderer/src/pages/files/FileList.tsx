@@ -4,11 +4,13 @@ import { DeleteIcon } from '@renderer/components/Icons'
 import { DynamicVirtualList } from '@renderer/components/VirtualList'
 import { handleDelete } from '@renderer/services/FileAction'
 import FileManager from '@renderer/services/FileManager'
+import { useAppSelector } from '@renderer/store'
 import type { FileMetadata, FileType } from '@renderer/types'
 import { FILE_TYPE } from '@renderer/types'
 import { formatFileSize } from '@renderer/utils'
 import { Col, Image, Row, Spin } from 'antd'
 import { t } from 'i18next'
+import { FileWarning } from 'lucide-react'
 import React, { memo, useCallback, useEffect, useRef, useState } from 'react'
 import styled from 'styled-components'
 
@@ -80,6 +82,11 @@ const FileList: React.FC<FileItemProps> = ({ id, list, files }) => {
   const estimateSize = useCallback(() => 75, [])
   const imageCount = files?.length ?? 0
   const { visibleCount, sentinelRef } = useProgressiveReveal(imageCount, IMAGE_BATCH_SIZE)
+  // 路径地基（问题2候选1）：订阅 filesPath，引导晚到时重渲染出真实 URL；
+  // 未到位前保持 Spin（诚实加载态），不渲染注定裂图的 file:// URL。
+  const filesPath = useAppSelector((state) => state.runtime.filesPath)
+  // 加载失败的图停止转圈并给占位（问题2候选2）：无 onError 时坏 URL 会永远 Spin。
+  const [failedIds, setFailedIds] = useState<Set<string>>(() => new Set())
 
   if (id === FILE_TYPE.IMAGE && imageCount > 0) {
     return (
@@ -89,18 +96,39 @@ const FileList: React.FC<FileItemProps> = ({ id, list, files }) => {
             {files?.slice(0, visibleCount).map((file) => (
               <Col key={file.id} xs={24} sm={12} md={8} lg={4} xl={3}>
                 <ImageWrapper>
-                  <LoadingWrapper>
-                    <Spin />
-                  </LoadingWrapper>
-                  <Image
-                    src={FileManager.getFileUrl(file)}
-                    style={{ height: '100%', objectFit: 'cover', cursor: 'pointer' }}
-                    preview={{ mask: false }}
-                    onLoad={(e) => {
-                      const img = e.target as HTMLImageElement
-                      img.parentElement?.classList.add('loaded')
-                    }}
-                  />
+                  {failedIds.has(file.id) ? (
+                    <FailedPlaceholder>
+                      <FileWarning size={28} />
+                    </FailedPlaceholder>
+                  ) : (
+                    <>
+                      <LoadingWrapper>
+                        <Spin />
+                      </LoadingWrapper>
+                      {filesPath && (
+                        <Image
+                          src={FileManager.getFileUrl(file)}
+                          style={{ height: '100%', objectFit: 'cover', cursor: 'pointer' }}
+                          preview={{ mask: false }}
+                          onLoad={(e) => {
+                            const img = e.target as HTMLImageElement
+                            img.parentElement?.classList.add('loaded')
+                          }}
+                          onError={() => {
+                            // logger 必要：坏 URL 是"文件管理找不到"的直接现场（字节缺失/路径坏）。
+                            logger.warn(
+                              `FileList: image failed to load, id=${file.id} url=${FileManager.getFileUrl(file)}`
+                            )
+                            setFailedIds((prev) => {
+                              const next = new Set(prev)
+                              next.add(file.id)
+                              return next
+                            })
+                          }}
+                        />
+                      )}
+                    </>
+                  )}
                   <ImageInfo>
                     <div>{formatFileSize(file.size)}</div>
                   </ImageInfo>
@@ -213,6 +241,19 @@ const LoadingWrapper = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
+  background-color: var(--color-background-soft);
+`
+
+const FailedPlaceholder = styled.div`
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-secondary);
   background-color: var(--color-background-soft);
 `
 

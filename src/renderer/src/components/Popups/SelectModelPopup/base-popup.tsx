@@ -11,7 +11,7 @@ import { objectEntries } from '@renderer/types'
 import { classNames, filterModelsByKeywords, getFancyProviderName } from '@renderer/utils'
 import { getDuplicateModelNames, getModelTags } from '@renderer/utils/model'
 import { Avatar, Divider, Empty, Modal, Tooltip } from 'antd'
-import { first, sortBy } from 'lodash'
+import { first, sortBy } from 'lodash-es'
 import { Settings2 } from 'lucide-react'
 import React, {
   startTransition,

@@ -60,12 +60,12 @@ describe('FileManager.deleteFile', () => {
     expect(fileDelete).toHaveBeenCalledWith('f1.png')
   })
 
-  it('盘上删除失败 → false（不再静默吞错，也不炸掉整批）', async () => {
+  it('盘上删除失败 → false 且行保持原状（先字节后行，可重试不吞错）', async () => {
     filesGet.mockResolvedValue(file('f1'))
     fileDelete.mockRejectedValue(new Error('EPERM: file is locked'))
 
     await expect(FileManager.deleteFile('f1', true)).resolves.toBe(false)
-    expect(filesDelete).toHaveBeenCalledWith('f1')
+    expect(filesDelete).not.toHaveBeenCalled()
   })
 
   it('行不存在 → false（"无可删"不等于成功）', async () => {

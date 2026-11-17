@@ -85,7 +85,11 @@ const TranslateWindow: FC<TranslateWindowProps> = ({ text, onResultChange }) => 
 
     const source = text.trim()
     // fork 缝：V1 的源语言块在检测后显示实际语言（`自动检测 (中文)`）；检测是本地 franc，零额外请求。
-    setDetectedLanguage(detectLanguage(source))
+    // franc-min 经动态装载（不进首屏 eager 图），作废语义随 effect cleanup。
+    let detectionCancelled = false
+    void detectLanguage(source).then((detected) => {
+      if (!detectionCancelled) setDetectedLanguage(detected)
+    })
     if (source.length === 0 || !translateModel) {
       // 不发请求也不置错：中性空态由 error/未配模型提示分支承担。
       // 显式收敛 playout（`update('', true)`）：否则"队列空 + streamDone=false"会让 rAF 自旋。
@@ -139,6 +143,7 @@ const TranslateWindow: FC<TranslateWindowProps> = ({ text, onResultChange }) => 
     void run()
 
     return () => {
+      detectionCancelled = true
       // 卸载即作废在途流：后续事件按 requestId 失配丢弃
       // fork 缝：作废之外额外发起真取消——重译/换语言/卸载时主进程 abort 旧流，
       // 否则旧模型继续生成到结束并计费（UI 行为不变：事件照旧失配丢弃、已生成内容保留）。

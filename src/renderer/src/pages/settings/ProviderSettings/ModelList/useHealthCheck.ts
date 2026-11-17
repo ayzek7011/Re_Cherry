@@ -5,7 +5,7 @@ import type { ModelWithStatus } from '@renderer/types/healthCheck'
 import { HealthStatus } from '@renderer/types/healthCheck'
 import { splitApiKeyString } from '@renderer/utils/api'
 import { summarizeHealthResults } from '@renderer/utils/healthCheck'
-import { isEmpty } from 'lodash'
+import { isEmpty } from 'lodash-es'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 

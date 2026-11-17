@@ -3,7 +3,6 @@ import AssistantAvatar from '@renderer/components/Avatar/AssistantAvatar'
 import type { DraggableVirtualListRef } from '@renderer/components/DraggableList'
 import { DraggableVirtualList } from '@renderer/components/DraggableList'
 import { CopyIcon, DeleteIcon, EditIcon } from '@renderer/components/Icons'
-import ObsidianExportPopup from '@renderer/components/Popups/ObsidianExportPopup'
 import PromptPopup from '@renderer/components/Popups/PromptPopup'
 import { isMac } from '@renderer/config/constant'
 import { useAssistant, useAssistants } from '@renderer/hooks/useAssistant'
@@ -35,7 +34,7 @@ import type { MenuProps } from 'antd'
 import { Dropdown, Tooltip } from 'antd'
 import type { ItemType, MenuItemType } from 'antd/es/menu/interface'
 import dayjs from 'dayjs'
-import { findIndex } from 'lodash'
+import { findIndex } from 'lodash-es'
 import {
   BrushCleaning,
   CheckSquare,
@@ -415,6 +414,8 @@ export const Topics: React.FC<Props> = ({ assistant: _assistant, activeTopic, se
             label: t('chat.topics.export.obsidian'),
             key: 'obsidian',
             onClick: async () => {
+              // 25KB 低频点击路径不进首屏静态图（懒加载先例 exportBackends.ts:723）。
+              const { default: ObsidianExportPopup } = await import('@renderer/components/Popups/ObsidianExportPopup')
               await ObsidianExportPopup.show({ title: topic.name, topic, processingMethod: '3' })
             }
           },

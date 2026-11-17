@@ -4,6 +4,8 @@ import { createRequire } from 'node:module'
 import { styleSheetSerializer } from 'jest-styled-components/serializer'
 import { expect, vi } from 'vitest'
 
+import { initI18n } from '../src/renderer/src/i18n'
+
 const require = createRequire(import.meta.url)
 const bufferModule = require('buffer')
 if (!bufferModule.SlowBuffer) {
@@ -92,3 +94,7 @@ if (typeof globalThis.localStorage === 'undefined' || typeof (globalThis.localSt
     Object.defineProperty(window, 'localStorage', { value: localStorageMock })
   }
 }
+
+// i18n 懒语言包（问题5 #4）：i18n/index.ts 不再在模块导入时自初始化，改为三窗口
+// 入口显式 initI18n()。渲染层测试在 setup 里完成等价初始化，组件拿到的实例与生产一致。
+await initI18n()

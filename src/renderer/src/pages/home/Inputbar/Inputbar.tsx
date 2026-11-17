@@ -35,7 +35,7 @@ import type { MessageInputBaseParams } from '@renderer/types/newMessage'
 import { delay } from '@renderer/utils'
 import { getSendMessageShortcutLabel } from '@renderer/utils/input'
 import { documentExts, imageExts, textExts } from '@shared/config/constant'
-import { debounce } from 'lodash'
+import { debounce } from 'lodash-es'
 import type { FC } from 'react'
 import React, { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -250,7 +250,7 @@ const InputbarInner: FC<InputbarInnerProps> = ({ assistant: initialAssistant, se
       return
     }
 
-    if (checkRateLimit(assistant)) {
+    if (checkRateLimit(assistant, topic.id)) {
       return
     }
 
@@ -289,6 +289,8 @@ const InputbarInner: FC<InputbarInnerProps> = ({ assistant: initialAssistant, se
     } catch (error) {
       logger.warn('Failed to send message:', error as Error)
       parent?.recordException(error as Error)
+      // 发送失败（附件上传拒绝等）必须让用户看见：输入框内容保留，可修正后重试。
+      window.toast.error(t('error.message_send_failed'))
     }
   }, [
     assistant,
@@ -302,7 +304,8 @@ const InputbarInner: FC<InputbarInnerProps> = ({ assistant: initialAssistant, se
     setFiles,
     setTimeoutTimer,
     resizeTextArea,
-    focusTextarea
+    focusTextarea,
+    t
   ])
 
   const tokenCountProps = useMemo(() => {

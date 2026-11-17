@@ -54,13 +54,20 @@ const scheduleEviction = (topicId: string, queue: PQueue) => {
 
 /**
  * Get or create a queue for a specific topic
+ *
+ * 默认 `concurrency: 1`：一个话题在内核侧是一个会话，同一时刻只能跑一个回合；
+ * 渲染层的投影状态（streams/pendingStubs）也是每话题单槽。并发 >1 时两个发送互踩——
+ * 后发的 pendingStubs.set 覆盖先发的，先发回合的 turn/start 认领到别人的 stub，
+ * 事件流错配（并答显示串模型）。多模型并答因此按队列顺序逐个流式（原"并行"在
+ * 单槽投影下本就错配，不是真并行）。显式传 options 可覆盖。
+ *
  * @param topicId The ID of the topic
  * @param options
  * @returns A PQueue instance for the topic
  */
 export const getTopicQueue = (topicId: string, options = {}): PQueue => {
   if (!requestQueues[topicId]) {
-    const queue = new PQueue(options)
+    const queue = new PQueue({ concurrency: 1, ...options })
     requestQueues[topicId] = queue
     queue.addListener('idle', () => {
       endTraceOnce(queue, topicId)

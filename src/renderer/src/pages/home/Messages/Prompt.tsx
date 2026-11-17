@@ -1,6 +1,5 @@
 import { useTheme } from '@renderer/context/ThemeProvider'
 import { usePromptProcessor } from '@renderer/hooks/usePromptProcessor'
-import AssistantSettingsPopup from '@renderer/pages/settings/AssistantSettings'
 import type { Assistant, Topic } from '@renderer/types'
 import { containsSupportedVariables } from '@renderer/utils/prompt'
 import type { FC } from 'react'
@@ -65,7 +64,11 @@ const Prompt: FC<Props> = ({ assistant, topic }) => {
   return (
     <Container
       className="system-prompt"
-      onClick={() => AssistantSettingsPopup.show({ assistant, tab: 'prompt' })}
+      onClick={async () => {
+        // 弹窗连带 AgentSettings→CodeEditor/SelectModelPopup 链（低频入口，不进首屏静态图）。
+        const { default: AssistantSettingsPopup } = await import('@renderer/pages/settings/AssistantSettings')
+        await AssistantSettingsPopup.show({ assistant, tab: 'prompt' })
+      }}
       $isDark={isDark}>
       <Text $isVisible={isVisible}>{displayText}</Text>
     </Container>

@@ -16,7 +16,7 @@
  */
 import { isMac, isWin } from '@renderer/config/constant'
 import { useAppSelector } from '@renderer/store'
-import { orderBy } from 'lodash'
+import { orderBy } from 'lodash-es'
 import { useCallback } from 'react'
 import { useHotkeys } from 'react-hotkeys-hook'
 

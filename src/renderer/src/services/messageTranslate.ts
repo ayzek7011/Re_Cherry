@@ -29,8 +29,10 @@ import { MessageBlockStatus, MessageBlockType } from '@renderer/types/newMessage
 import type { MessageTranslationRecord } from '@renderer/types/translate'
 import { createTranslationBlock } from '@renderer/utils/messageUtils/create'
 import { buildTranslatePrompt, TRANSLATE_PROMPT } from '@renderer/utils/translate'
+// DebouncedFuncLeading 只有 @types/lodash 提供（@types/lodash-es 未转发该类型）；
+// type-only import 编译期擦除，不产生运行时双实例。
 import type { DebouncedFuncLeading } from 'lodash'
-import { throttle } from 'lodash'
+import { throttle } from 'lodash-es'
 
 const logger = loggerService.withContext('MessageTranslate')
 

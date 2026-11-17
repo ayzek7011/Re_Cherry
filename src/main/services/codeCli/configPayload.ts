@@ -12,14 +12,14 @@
 //   读：`{ targets: CliConfigTarget[] }`（去重，首现保留——同 V2 的 z.transform）
 //   写：`{ cliTool: FileConfiguredCli, files: CliConfigWriteFile[] }`
 
+import {
+  type DeepSeekHarnessAgentPreset,
+  type DeepSeekHarnessPermissionMode,
+  normalizeDeepSeekHarnessSettings
+} from '@shared/types/codeCli'
+import { type UniqueModelId, UniqueModelIdSchema } from '@shared/types/uniqueModelId'
 import type { CliConfigTarget, CliConfigWriteFile, FileConfiguredCli } from '@shared/utils/cliConfig'
 import { CLI_CONFIG_TARGET_IDS, FILE_CONFIGURED_CLI_TOOLS } from '@shared/utils/cliConfig'
-import {
-  normalizeDeepSeekHarnessSettings,
-  type DeepSeekHarnessAgentPreset,
-  type DeepSeekHarnessPermissionMode
-} from '@shared/types/codeCli'
-import { UniqueModelIdSchema, type UniqueModelId } from '@shared/types/uniqueModelId'
 
 /**
  * fork 缝：`'direct' | 'gateway'` 的正源在 services/deepSeekHarness/config.ts（DeepSeekHarnessMode）；

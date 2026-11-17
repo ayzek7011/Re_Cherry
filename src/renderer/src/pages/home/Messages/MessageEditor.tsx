@@ -226,6 +226,8 @@ const MessageBlockEditor: FC<Props> = ({ message, topicId, onSave, onResend, onC
       // oxlint 的 await-thenable 依据 prop 的声明类型（`=> void`）判定，但这里 await 是**必要**的：
       // 解构出的回调即使同步抛错也能被本 catch 接到（去掉 await 会漏掉同步抛出、只留未处理拒绝）。
 
+      // oxlint(await-thenable) 认为回调可能非 Promise；onSave 实际可为 void（eslint 视为 unused，
+      // 但指令同时压住 oxlint --deny-warnings，保留）。
       // eslint-disable-next-line @typescript-eslint/await-thenable
       await onSave(updatedBlocks)
     } catch (error) {

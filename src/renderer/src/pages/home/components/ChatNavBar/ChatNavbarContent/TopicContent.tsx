@@ -1,6 +1,5 @@
 import AssistantAvatar from '@renderer/components/Avatar/AssistantAvatar'
 import HorizontalScrollContainer from '@renderer/components/HorizontalScrollContainer'
-import AssistantSettingsPopup from '@renderer/pages/settings/AssistantSettings'
 import type { Assistant, Topic } from '@renderer/types'
 import { ChevronRight } from 'lucide-react'
 import { useMemo } from 'react'
@@ -26,7 +25,11 @@ const TopicContent = ({ assistant, activeTopic, setActiveTopic }: TopicContentPr
           {/* Assistant Label */}
           <div
             className="flex h-full cursor-pointer items-center gap-1.5"
-            onClick={() => AssistantSettingsPopup.show({ assistant })}>
+            onClick={async () => {
+              // 弹窗连带 AgentSettings→CodeEditor/SelectModelPopup 链（低频入口，不进首屏静态图）。
+              const { default: AssistantSettingsPopup } = await import('@renderer/pages/settings/AssistantSettings')
+              await AssistantSettingsPopup.show({ assistant })
+            }}>
             <AssistantAvatar assistant={assistant} size={24} />
             <span className="max-w-40 truncate text-xs">{assistantName}</span>
           </div>

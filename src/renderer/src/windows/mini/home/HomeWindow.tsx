@@ -2,7 +2,7 @@ import { loggerService } from '@logger'
 import { isMac } from '@renderer/config/constant'
 import { useTheme } from '@renderer/context/ThemeProvider'
 import { useSettings } from '@renderer/hooks/useSettings'
-import i18n from '@renderer/i18n'
+import { changeAppLanguage } from '@renderer/i18n'
 import { getDefaultTopic } from '@renderer/services/AssistantService'
 import { encodeImageBlobForKernel, type KernelImageInput } from '@renderer/services/kernelImages'
 import { lightStream, lightStreamAbort } from '@renderer/services/lightLlm'
@@ -19,7 +19,7 @@ import { replacePromptVariables } from '@renderer/utils/prompt'
 import { kernelReasoningLevelFor } from '@renderer/utils/reasoningKernel'
 import { defaultLanguage } from '@shared/config/constant'
 import { Divider } from 'antd'
-import { isEmpty, last } from 'lodash'
+import { isEmpty, last } from 'lodash-es'
 import type { FC } from 'react'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -156,7 +156,8 @@ const HomeWindow: FC<{ draggable?: boolean }> = ({ draggable = true }) => {
   }, [isFirstMessage, referenceText, userInputText])
 
   useEffect(() => {
-    void i18n.changeLanguage(language || navigator.language || defaultLanguage)
+    // zh 语言包经 changeAppLanguage 按需装载（#4 懒 locale：mini 窗口不再静态内联双语言包）。
+    void changeAppLanguage(language || navigator.language || defaultLanguage)
   }, [language])
 
   // fork 缝：V2 quickAssistant `HomeWindow.tsx:239-246` 的 `clear()`

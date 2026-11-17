@@ -11,7 +11,7 @@ import ToolsSettings from '../ToolsSettings'
  * 下面是介绍）。
  *
  * 断言锚点用**工具原版名**而不是本地化名：原版名是标识符、不随语言变，测试不会因为
- * 文案改动而碎；同时它顺带证明注册表 `TOOL_ORIGIN_NAMES` 十三张卡片全覆盖。
+ * 文案改动而碎；同时它顺带证明注册表 `TOOL_ORIGIN_NAMES` 十四张卡片全覆盖。
  */
 const ORIGIN_NAMES = [
   'ask_user_question',
@@ -24,6 +24,7 @@ const ORIGIN_NAMES = [
   'jobs',
   'move_to_trash',
   'save_attachment',
+  'documents_extract',
   'memory',
   'todo_write',
   'goal'
@@ -47,7 +48,7 @@ const cardOf = (originName: string): HTMLElement => {
 }
 
 describe('工具页方形卡片', () => {
-  it('十三张卡片都有原版名、开关与介绍', () => {
+  it('十四张卡片都有原版名、开关与介绍', () => {
     setup()
 
     for (const origin of ORIGIN_NAMES) {

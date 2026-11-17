@@ -6,12 +6,14 @@ import { extractHtmlTitle, getFileNameFromHtmlTitle } from '@renderer/utils/form
 import { Button } from 'antd'
 import { Code, DownloadIcon, Globe, LinkIcon, Sparkles } from 'lucide-react'
 import type { FC } from 'react'
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ClipLoader } from 'react-spinners'
 import styled, { keyframes } from 'styled-components'
 
-import HtmlArtifactsPopup from './HtmlArtifactsPopup'
+// HtmlArtifactsPopup 静态 import 会把 CodeEditor → @uiw/react-codemirror 全链拖进首屏 eager 图
+// （HtmlArtifactPopupContext.tsx:29 已有 lazy 先例，此处曾静态回归）。弹窗仅在点击预览后出现。
+const HtmlArtifactsPopup = lazy(() => import('./HtmlArtifactsPopup'))
 
 const logger = loggerService.withContext('HtmlArtifactsCard')
 
@@ -114,13 +116,17 @@ const HtmlArtifactsCard: FC<Props> = ({ html, onSave, isStreaming = false }) => 
         </Content>
       </Container>
 
-      <HtmlArtifactsPopup
-        open={isPopupOpen}
-        title={title}
-        html={htmlContent}
-        onSave={onSave}
-        onClose={() => setIsPopupOpen(false)}
-      />
+      {isPopupOpen && (
+        <Suspense fallback={null}>
+          <HtmlArtifactsPopup
+            open={isPopupOpen}
+            title={title}
+            html={htmlContent}
+            onSave={onSave}
+            onClose={() => setIsPopupOpen(false)}
+          />
+        </Suspense>
+      )}
     </>
   )
 }

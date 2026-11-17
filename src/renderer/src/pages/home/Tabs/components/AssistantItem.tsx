@@ -4,7 +4,6 @@ import PromptPopup from '@renderer/components/Popups/PromptPopup'
 import { useAssistant, useAssistants } from '@renderer/hooks/useAssistant'
 import { useSettings } from '@renderer/hooks/useSettings'
 import { useTags } from '@renderer/hooks/useTags'
-import AssistantSettingsPopup from '@renderer/pages/settings/AssistantSettings'
 import { isImageIdentity } from '@renderer/services/assistantIdentity'
 import { EVENT_NAMES, EventEmitter } from '@renderer/services/EventService'
 import type { Assistant, AssistantsSortType } from '@renderer/types'
@@ -270,7 +269,11 @@ function getMenuItems({
       label: t('assistants.edit.title'),
       key: 'edit',
       icon: <EditIcon size={14} />,
-      onClick: () => AssistantSettingsPopup.show({ assistant })
+      onClick: async () => {
+        // 弹窗连带 AgentSettings→CodeEditor/SelectModelPopup 链（低频入口，不进首屏静态图）。
+        const { default: AssistantSettingsPopup } = await import('@renderer/pages/settings/AssistantSettings')
+        await AssistantSettingsPopup.show({ assistant })
+      }
     },
     {
       label: t('assistants.copy.title'),

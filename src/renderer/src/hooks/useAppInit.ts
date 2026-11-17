@@ -3,7 +3,7 @@ import { isMac, LATEST_PRIVACY_POLICY_VERSION } from '@renderer/config/constant'
 import { isLocalAi } from '@renderer/config/env'
 import { useTheme } from '@renderer/context/ThemeProvider'
 import db from '@renderer/databases'
-import i18n, { setDayjsLocale } from '@renderer/i18n'
+import { changeAppLanguage, setDayjsLocale } from '@renderer/i18n'
 import FileManager from '@renderer/services/FileManager'
 import {
   initKernelBridge,
@@ -14,7 +14,7 @@ import {
 } from '@renderer/services/kernelChat'
 import tabsService from '@renderer/services/TabsService'
 import { handleSaveData, useAppDispatch, useAppSelector } from '@renderer/store'
-import { setAvatar, setFilesPath, setResourcesPath } from '@renderer/store/runtime'
+import { setAvatar } from '@renderer/store/runtime'
 import type { WebSearchState } from '@renderer/store/websearch'
 import { checkDataLimit } from '@renderer/utils'
 import { defaultLanguage } from '@shared/config/constant'
@@ -160,7 +160,7 @@ export function useAppInit() {
 
   useEffect(() => {
     const currentLanguage = language || navigator.language || defaultLanguage
-    void i18n.changeLanguage(currentLanguage)
+    void changeAppLanguage(currentLanguage)
     setDayjsLocale(currentLanguage)
   }, [language])
 
@@ -185,12 +185,10 @@ export function useAppInit() {
   }, [])
 
   useEffect(() => {
-    // set files path
-    void window.api.getAppInfo().then((info) => {
-      dispatch(setFilesPath(info.filesPath))
-      dispatch(setResourcesPath(info.resourcesPath))
-    })
-  }, [dispatch])
+    // 路径地基收口到 FileManager.syncRuntimePaths：幂等、失败重试、mini 窗口共用同一引导
+    //（此前这里一次性 then 无 catch——瞬时 IPC 故障会让整个会话的文件定位全坏且无信号）。
+    void FileManager.syncRuntimePaths()
+  }, [])
 
   // 注入实现收口到 useInjectCustomCss（mini 窗口共用同一实现）。
   useInjectCustomCss(customCss)
@@ -304,7 +302,10 @@ export function useAppInit() {
   // 历史文件行修复：修"下载落盘后缀被 Content-Type 叠加"造成的分类错误
   // （`xxx.png` + octet-stream → `xxx.png.bin` / type `other`，文件页「图片」里看不到 AI 生成的图）。
   // 幂等、只修分类与显示名，失败只记日志（见 FileManager.repairLegacyDownloadedFiles）。
+  // 同点补一次"扩展名丢前导点"历史行（saveBase64Image/savePastedImage 曾回 `png`，
+  // 契约是 `.png`——无点行按 id+ext 定位全失败，见 FileManager.repairDotlessExtRows）。
   useEffect(() => {
     void FileManager.repairLegacyDownloadedFiles()
+    void FileManager.repairDotlessExtRows()
   }, [])
 }

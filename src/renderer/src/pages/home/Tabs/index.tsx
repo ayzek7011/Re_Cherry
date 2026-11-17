@@ -1,7 +1,6 @@
 import { useAssistants, useDefaultAssistant } from '@renderer/hooks/useAssistant'
 import { useNavbarPosition, useSettings } from '@renderer/hooks/useSettings'
 import { useShowTopics } from '@renderer/hooks/useStore'
-import AssistantSettingsPopup from '@renderer/pages/settings/AssistantSettings'
 import { getDefaultTopic } from '@renderer/services/AssistantService'
 import { EVENT_NAMES, EventEmitter } from '@renderer/services/EventService'
 import type { Assistant, Topic } from '@renderer/types'
@@ -71,6 +70,8 @@ const HomeTabs: FC<Props> = ({
    *  （用户裁决："默认助手应当是不可变的基本模板"）。要改模板请走设置 → 模型设置 → 默认助手。
    * 不再走预设挑选（预设链已整链移除）。 */
   const onCreateAssistant = async () => {
+    // 助手设置弹窗连带 AgentSettings→CodeEditor/SelectModelPopup 链（低频入口，不进首屏静态图）。
+    const { default: AssistantSettingsPopup } = await import('@renderer/pages/settings/AssistantSettings')
     const draft = await AssistantSettingsPopup.showDraft({ assistant: defaultAssistant })
     if (draft) {
       createAssistant(draft)

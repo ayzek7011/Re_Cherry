@@ -1,4 +1,3 @@
-import { showErrorDetailPopup } from '@renderer/components/ErrorDetailModal'
 import { FreeTrialModelTag } from '@renderer/components/FreeTrialModelTag'
 import { type HealthResult, HealthStatusIndicator } from '@renderer/components/HealthStatusIndicator'
 import { HStack } from '@renderer/components/Layout'
@@ -51,8 +50,10 @@ const ModelListItem: React.FC<ModelListItemProps> = ({
 
   const handleErrorClick = useMemo(() => {
     if (!hasFailedResult) return undefined
-    return (result: HealthResult) => {
+    return async (result: HealthResult) => {
       if (result.error) {
+        // 动态加载：ErrorDetailModal 409KB 低频点击路径不进首屏图
+        const { showErrorDetailPopup } = await import('@renderer/components/ErrorDetailModal')
         showErrorDetailPopup({ error: result.error })
       }
     }

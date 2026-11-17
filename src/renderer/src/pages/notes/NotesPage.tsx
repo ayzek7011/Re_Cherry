@@ -41,7 +41,7 @@ import {
 import type { NotesSortType, NotesTreeNode } from '@renderer/types/note'
 import type { FileChangeEvent } from '@shared/config/types'
 import { message } from 'antd'
-import { debounce } from 'lodash'
+import { debounce } from 'lodash-es'
 import { AnimatePresence, motion } from 'motion/react'
 import type { FC } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'

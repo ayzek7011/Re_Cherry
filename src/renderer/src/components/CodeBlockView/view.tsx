@@ -2,7 +2,6 @@ import { Icon } from '@iconify/react'
 import { loggerService } from '@logger'
 import type { ActionTool } from '@renderer/components/ActionTools'
 import type { CodeEditorHandles } from '@renderer/components/CodeEditor'
-import CodeEditor from '@renderer/components/CodeEditor'
 import {
   CodeToolbar,
   useCopyTool,
@@ -23,8 +22,9 @@ import { pyodideService } from '@renderer/services/PyodideService'
 import { getExtensionByLanguage } from '@renderer/utils/code-language'
 import { getFileIconName } from '@renderer/utils/fileIconName'
 import { extractHtmlTitle, getFileNameFromHtmlTitle } from '@renderer/utils/formats'
+import { Spin } from 'antd'
 import dayjs from 'dayjs'
-import React, { memo, startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { lazy, memo, startTransition, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import styled, { css } from 'styled-components'
 
@@ -33,6 +33,10 @@ import StatusBar from './StatusBar'
 import type { ViewMode } from './types'
 
 const logger = loggerService.withContext('CodeBlockView')
+
+// CodeEditor（@uiw/react-codemirror 全链，≈690KB）仅编辑模式用到；默认渲染走 CodeViewer
+// （shiki 路径，内部已懒加载）。懒挂载把 CodeMirror 链移出首屏 eager 图。
+const CodeEditor = lazy(() => import('@renderer/components/CodeEditor'))
 
 interface Props {
   children: string
@@ -270,18 +274,25 @@ export const CodeBlockView: React.FC<Props> = memo(
     const sourceView = useMemo(
       () =>
         codeEditor.enabled && editable ? (
-          <CodeEditor
-            className="source-view"
-            ref={sourceViewRef}
-            value={children}
-            language={language}
-            onSave={onSave}
-            onHeightChange={handleHeightChange}
-            maxHeight={`${collapsedHeight}px`}
-            options={{ stream: true }}
-            expanded={shouldExpand}
-            wrapped={shouldWrap}
-          />
+          <Suspense
+            fallback={
+              <CodeEditorFallback>
+                <Spin size="small" />
+              </CodeEditorFallback>
+            }>
+            <CodeEditor
+              className="source-view"
+              ref={sourceViewRef}
+              value={children}
+              language={language}
+              onSave={onSave}
+              onHeightChange={handleHeightChange}
+              maxHeight={`${collapsedHeight}px`}
+              options={{ stream: true }}
+              expanded={shouldExpand}
+              wrapped={shouldWrap}
+            />
+          </Suspense>
         ) : (
           <CodeViewer
             className="source-view"
@@ -409,6 +420,14 @@ const CodeHeader = styled.div<{ $isInSpecialView?: boolean }>`
   margin-top: ${(props) => (props.$isInSpecialView ? '6px' : '0')};
   height: ${(props) => (props.$isInSpecialView ? '16px' : '34px')};
   background-color: ${(props) => (props.$isInSpecialView ? 'transparent' : 'var(--color-background-mute)')};
+`
+
+// CodeEditor 懒挂载期间占位：不留静默空白（渲染规则：每个状态都要有可见形态）。
+const CodeEditorFallback = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
 `
 
 const SplitViewWrapper = styled.div<{ $isSpecialView: boolean; $isSplitView: boolean }>`

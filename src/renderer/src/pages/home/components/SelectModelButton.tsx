@@ -1,5 +1,4 @@
 import ModelAvatar from '@renderer/components/Avatar/ModelAvatar'
-import { SelectChatModelPopup } from '@renderer/components/Popups/SelectModelPopup'
 import { isLocalAi } from '@renderer/config/env'
 import { isChatCandidateModel, isWebSearchModel } from '@renderer/config/models'
 import { useAssistant } from '@renderer/hooks/useAssistant'
@@ -28,6 +27,8 @@ const SelectModelButton: FC<Props> = ({ assistant }) => {
 
   const onSelectModel = async (event: React.MouseEvent<HTMLElement>) => {
     event.currentTarget.blur()
+    // 弹窗连带 ModelSettings/CodeEditor 链（低频入口，不进首屏静态图）。
+    const { SelectChatModelPopup } = await import('@renderer/components/Popups/SelectModelPopup')
     const selectedModel = await SelectChatModelPopup.show({ model, filter: modelFilter })
     if (selectedModel) {
       // 避免更新数据造成关闭弹框的卡顿

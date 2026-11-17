@@ -1,5 +1,6 @@
 import ImageViewer from '@renderer/components/ImageViewer'
 import FileManager from '@renderer/services/FileManager'
+import { useAppSelector } from '@renderer/store'
 import { type ImageMessageBlock, MessageBlockStatus } from '@renderer/types/newMessage'
 import { Skeleton } from 'antd'
 import React from 'react'
@@ -13,6 +14,9 @@ interface Props {
 
 const ImageBlock: React.FC<Props> = ({ block, isSingle = false }) => {
   const { t } = useTranslation()
+  // 订阅 filesPath：getFilePath 读的是 Redux 非响应式快照，memo 组件在路径晚到
+  // （启动窗口 / mini 窗首次拉取）时不会重渲染，坏 file:// URL 会一直挂着。
+  const filesPath = useAppSelector((state) => state.runtime.filesPath)
 
   // 待生成/生成中：骨架（原行为；PROCESSING 一并纳入——它是 createBaseMessageBlock 的默认状态）
   if (block.status === MessageBlockStatus.PENDING || block.status === MessageBlockStatus.PROCESSING) {
@@ -22,7 +26,7 @@ const ImageBlock: React.FC<Props> = ({ block, isSingle = false }) => {
   if (block.status === MessageBlockStatus.STREAMING || block.status === MessageBlockStatus.SUCCESS) {
     const images = block.metadata?.generateImageResponse?.images?.length
       ? block.metadata?.generateImageResponse?.images
-      : block?.file
+      : block?.file && filesPath
         ? [`file://${FileManager.getFilePath(block?.file)}`]
         : block?.url
           ? [block.url]

@@ -2,7 +2,7 @@ import type { Assistant, FileMetadata, Usage } from '@renderer/types'
 import { FILE_TYPE } from '@renderer/types'
 import type { Message } from '@renderer/types/newMessage'
 import { findFileBlocks, getMainTextContent, getThinkingContent } from '@renderer/utils/messageUtils/find'
-import { takeRight } from 'lodash'
+import { takeRight } from 'lodash-es'
 import { approximateTokenSize } from 'tokenx'
 
 import { getAssistantSettings } from './AssistantService'

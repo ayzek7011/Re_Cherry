@@ -5,7 +5,7 @@ import type { Model, Provider } from '@renderer/types'
 import { getDefaultGroupName } from '@renderer/utils'
 import type { FormProps } from 'antd'
 import { Button, Flex, Form, Input, Modal } from 'antd'
-import { find } from 'lodash'
+import { find } from 'lodash-es'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 

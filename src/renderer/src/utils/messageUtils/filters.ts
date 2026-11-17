@@ -4,8 +4,8 @@ import type { Message } from '@renderer/types/newMessage' // Assuming correct Me
 import { MessageBlockType } from '@renderer/types/newMessage'
 // May need Block types if refactoring to use them
 // import type { MessageBlock, MainTextMessageBlock } from '@renderer/types/newMessageTypes';
-import { remove, takeRight } from 'lodash'
-import { isEmpty } from 'lodash'
+import { remove, takeRight } from 'lodash-es'
+import { isEmpty } from 'lodash-es'
 
 import { findBlocksByType } from './find'
 

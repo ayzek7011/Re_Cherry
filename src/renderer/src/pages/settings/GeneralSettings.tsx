@@ -6,7 +6,7 @@ import { isMac } from '@renderer/config/constant'
 import { useTheme } from '@renderer/context/ThemeProvider'
 import { useEnableDeveloperMode, useSettings } from '@renderer/hooks/useSettings'
 import { useTimer } from '@renderer/hooks/useTimer'
-import i18n from '@renderer/i18n'
+import i18n, { changeAppLanguage } from '@renderer/i18n'
 import type { RootState } from '@renderer/store'
 import { useAppDispatch } from '@renderer/store'
 import { updateAssistant, updateDefaultAssistant } from '@renderer/store/assistants'
@@ -112,7 +112,9 @@ const GeneralSettings: FC = () => {
     dispatch(setLanguage(value))
     localStorage.setItem('language', value)
     void window.api.setLanguage(value)
-    await i18n.changeLanguage(value)
+    // 语言包按需装载：先等目标语言资源就位再切换（changeAppLanguage 内部保证）。
+    // 后面的默认助手/话题改名读取新语言的 t()，依赖切换已完成。
+    await changeAppLanguage(value)
 
     if (getDefaultNamesForKey('chat.default.name').has(defaultAssistant.name)) {
       const newName = i18n.t('chat.default.name')

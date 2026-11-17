@@ -94,6 +94,7 @@ describe('useNotesFileUpload（目录批次读取）', () => {
 
     expect(onUploadFiles).not.toHaveBeenCalled()
     expect(window.toast.warning).toHaveBeenCalledTimes(1)
-    expect(window.toast.warning).toHaveBeenCalledWith('notes.no_valid_files')
+    // i18n 在 renderer.setup 已初始化：断言翻译后的用户可见文案而非裸键。
+    expect(window.toast.warning).toHaveBeenCalledWith('No valid file was uploaded')
   })
 })

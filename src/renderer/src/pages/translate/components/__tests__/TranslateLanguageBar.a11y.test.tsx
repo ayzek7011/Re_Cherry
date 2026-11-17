@@ -52,8 +52,9 @@ describe('TranslateLanguageBar · 可访问名', () => {
 
     // 两语的 `translate.source_language` / `translate.target_language` 已补齐，
     // 故两个控件都拿 V2 同名键当可访问名，不再退化成"组合框"。
-    expect(source?.getAttribute('data-aria-label')).toBe('translate.source_language')
-    expect(target?.getAttribute('data-aria-label')).toBe('translate.target_language')
+    // i18n 在 renderer.setup 已初始化：断言翻译后的用户可见文案而非裸键。
+    expect(source?.getAttribute('data-aria-label')).toBe('Source Language')
+    expect(target?.getAttribute('data-aria-label')).toBe('Target Language')
   })
 
   it('源语言选项含自动检测 + 全部内置语言，目标语言只含内置语言', () => {

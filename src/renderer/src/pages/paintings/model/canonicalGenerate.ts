@@ -16,6 +16,7 @@ import { loggerService } from '@logger'
 import { createPaintingGenerateError } from '@renderer/pages/paintings/errors/paintingGenerateError'
 import { checkProviderEnabled } from '@renderer/pages/paintings/utils/checkProviderEnabled'
 import FileManager from '@renderer/services/FileManager'
+import { MEDIA_TYPE_BY_EXT } from '@renderer/services/kernelImages'
 import { editPaintingImages, generatePaintingImages } from '@renderer/services/paintingImageService'
 import type { FileMetadata } from '@renderer/types'
 import { FILE_TYPE } from '@renderer/types'
@@ -178,7 +179,10 @@ export async function canonicalGenerate<T extends PaintingData>(
       ? await Promise.all(
           inputImageFiles.map(async (entry: FileMetadata) => {
             const buffer = await FileManager.readBinaryImage(entry)
-            return bytesToDataUrl(new Uint8Array(buffer), 'image/png')
+            // mime 按入仓文件真实扩展名取（未知扩展回落 image/png）；此前硬编码
+            // 'image/png' 会把 jpeg/webp 参考图错标成 png。
+            const ext = (entry.ext ?? '').replace(/^\./, '').toLowerCase()
+            return bytesToDataUrl(new Uint8Array(buffer), MEDIA_TYPE_BY_EXT[ext])
           })
         )
       : undefined

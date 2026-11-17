@@ -1,7 +1,7 @@
 import { loggerService } from '@logger'
 import db from '@renderer/databases'
 import { getModelUniqId } from '@renderer/services/ModelService'
-import { sortBy } from 'lodash'
+import { sortBy } from 'lodash-es'
 import { useCallback, useEffect, useState } from 'react'
 
 import { useProviders } from './useProvider'

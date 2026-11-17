@@ -17,7 +17,7 @@ import {
   recallLastViewedBranch
 } from '@renderer/utils/topicBranch'
 import { t as translate } from 'i18next'
-import { find } from 'lodash'
+import { find } from 'lodash-es'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 

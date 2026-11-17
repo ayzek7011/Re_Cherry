@@ -17,10 +17,11 @@
 import type { Stats } from 'node:fs'
 
 import { loggerService } from '@logger'
+import { t } from '@main/utils/locales'
 import { IpcChannel } from '@shared/IpcChannel'
 import type { WebDavConfig } from '@types'
 import archiver from 'archiver'
-import { app } from 'electron'
+import { app, dialog } from 'electron'
 import * as fs from 'fs-extra'
 import StreamZip from 'node-stream-zip'
 import * as path from 'path'
@@ -141,6 +142,30 @@ class BackupManager {
     }
   }
 
+  /**
+   * 带瞬时锁重试的目录拷贝。应用运行中拷 Chromium 的 LevelDB 目录时，杀软扫描或
+   * compaction 可能瞬时持有某个文件（Windows 上表现为 EBUSY/EPERM）——这类锁是
+   * 短持的，一次短退避重试即可消掉大多数偶发"备份失败"。非瞬时错误（ENOENT 等）直接上抛。
+   * 注意：这不解决"运行中拷贝的一致性"问题（见 docs/limits-and-baseline.md 的有意保留段）。
+   */
+  private static async copyDirWithTransientRetry(source: string, dest: string, attempts = 2): Promise<void> {
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      try {
+        return await fs.copy(source, dest)
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException)?.code
+        const transient = code === 'EBUSY' || code === 'EPERM'
+        if (!transient || attempt === attempts) {
+          throw error
+        }
+        logger.warn(
+          `[backupDirect] copy of ${source} hit a transient lock (${code}), retrying (${attempt}/${attempts - 1} retries left)`
+        )
+        await new Promise((resolve) => setTimeout(resolve, 300))
+      }
+    }
+  }
+
   static async handleStartupRestore(): Promise<void> {
     const userDataPath = app.getPath('userData')
 
@@ -212,6 +237,20 @@ class BackupManager {
       // 有意不清 `.restore`：还原失败时它们是用户数据的唯一副本，
       // 保留让下次启动重试；清掉才会造成"原库已删、备份已清"的双失。
       logger.warn('[handleStartupRestore] .restore directories were kept for a retry on the next start')
+      // 用户可见信号：还原失败时应用会带着"旧数据"继续运行，用户会误以为还原成功。
+      // 这里用原生对话框告知（不 await，不阻塞启动序列）。
+      void dialog
+        .showMessageBox({
+          type: 'warning',
+          title: t('backup.restore_pending.title'),
+          message: t('backup.restore_pending.message'),
+          buttons: [t('common.confirm')],
+          defaultId: 0,
+          noLink: true
+        })
+        .catch((dialogError) => {
+          logger.warn('[handleStartupRestore] failed to show the restore-pending dialog:', dialogError as Error)
+        })
     }
   }
 
@@ -268,7 +307,7 @@ class BackupManager {
       const indexedDBSource = path.join(userDataPath, 'IndexedDB')
       const indexedDBDest = path.join(tempDir, 'IndexedDB')
       if (await fs.pathExists(indexedDBSource)) {
-        await fs.copy(indexedDBSource, indexedDBDest)
+        await BackupManager.copyDirWithTransientRetry(indexedDBSource, indexedDBDest)
       } else {
         logger.debug('[backupDirect] IndexedDB directory not found, skipping')
       }
@@ -276,7 +315,7 @@ class BackupManager {
       const localStorageSource = path.join(userDataPath, 'Local Storage')
       const localStorageDest = path.join(tempDir, 'Local Storage')
       if (await fs.pathExists(localStorageSource)) {
-        await fs.copy(localStorageSource, localStorageDest)
+        await BackupManager.copyDirWithTransientRetry(localStorageSource, localStorageDest)
       } else {
         logger.debug('[backupDirect] Local Storage directory not found, skipping')
       }
@@ -305,8 +344,10 @@ class BackupManager {
           )
         }
       } else {
+        // skipBackupFile：不打 Data 空壳进归档。还原侧（restoreDirect/restoreLegacy）
+        // 按「Data 目录存在且非空」判定是否还原，空壳与缺失等价；空壳只会误导
+        // 解包者以为文件数据已包含在备份里。
         logger.debug('[backupDirect] Skip the backup of the file')
-        await fs.promises.mkdir(path.join(tempDir, 'Data'))
       }
 
       // provider key 随备份流转（明文允许出现在低频迁移产物；恢复时经 main 加密写回）

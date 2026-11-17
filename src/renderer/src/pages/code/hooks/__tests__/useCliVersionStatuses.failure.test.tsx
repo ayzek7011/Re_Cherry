@@ -13,8 +13,8 @@ import { CodeCli } from '@shared/types/codeCli'
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { useCliVersionStatuses } from '../useCliVersionStatuses'
 import type { BinaryToolSnapshot } from '../../utils/binarySnapshot'
+import { useCliVersionStatuses } from '../useCliVersionStatuses'
 
 const APPLIED_DSH: BinaryToolSnapshot = {
   name: 'dsh',
@@ -76,7 +76,8 @@ describe('useCliVersionStatuses（失败语义）', () => {
     let latestFail = true
     const fireChanged = installBinaryApi({
       snapshots: () => Promise.resolve({ dsh: APPLIED_DSH }),
-      latestVersions: () => (latestFail ? Promise.reject(new Error('registry unreachable')) : Promise.resolve({ dsh: '0.3.0' }))
+      latestVersions: () =>
+        latestFail ? Promise.reject(new Error('registry unreachable')) : Promise.resolve({ dsh: '0.3.0' })
     })
 
     const { result } = renderHook(() => useCliVersionStatuses([CodeCli.DEEPSEEK_HARNESS]))

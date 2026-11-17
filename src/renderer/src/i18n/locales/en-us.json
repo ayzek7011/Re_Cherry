@@ -177,6 +177,10 @@
       "title": "Backup Progress",
       "writing_data": "Writing data..."
     },
+    "restore_pending": {
+      "message": "Restoring the backup at startup did not finish. Your original data is intact and untouched. A copy of the backup has been saved and will be retried automatically on the next launch.",
+      "title": "Backup Restore Not Completed"
+    },
     "title": "Data Backup"
   },
   "button": {
@@ -931,6 +935,7 @@
       "file_format": "Backup file format error"
     },
     "base64DataTruncated": "Base64 image data truncated, size",
+    "message_send_failed": "Failed to send the message. Try again.",
     "boundary": {
       "default": {
         "devtools": "Open debug panel",
@@ -1377,7 +1382,8 @@
     },
     "edit": {
       "resend_failed": "Failed to resend the message. Retry.",
-      "save_failed": "Failed to save the message. Retry."
+      "save_failed": "Failed to save the message. Retry.",
+      "branch_fallback": "Branch resend failed. The message was resent in the current topic."
     },
     "error": {
       "chunk_overlap_too_large": "Chunk overlap cannot be greater than chunk size",
@@ -2528,6 +2534,10 @@
           "saveAttachment": {
             "description": "Save an attachment as a file in the workspace.",
             "name": "Save Attachment"
+          },
+          "documentsExtract": {
+            "description": "Extract text from a document file on disk by path (pdf/docx/pptx/xlsx/epub and more). Scanned PDFs go through the document-processing channel.",
+            "name": "Documents Extract"
           },
           "todo": {
             "description": "Keep the task list of the current session.",

@@ -1,7 +1,7 @@
 import { loggerService } from '@logger'
 import type { Model, ModelType } from '@renderer/types'
 import type { ModalFuncProps } from 'antd'
-import { isEqual } from 'lodash'
+import { isEqual } from 'lodash-es'
 import { v4 as uuidv4 } from 'uuid'
 
 const logger = loggerService.withContext('Utils')

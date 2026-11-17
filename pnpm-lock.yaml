@@ -27,7 +27,7 @@ overrides:
 
 patchedDependencies:
   '@deepseek-ai/dsh-llm-pi-ai@0.1.1-rc.2':
-    hash: 93eae4245fc452559290c141fd83eb1d02120e57151a5a1225171a5773eb48cb
+    hash: e7570f23c89fb006c9444686dba376af7174b2cea6a7483b96a48bc5189f5599
     path: patches/@deepseek-ai__dsh-llm-pi-ai@0.1.1-rc.2.patch
   '@deepseek-ai/dsh-sandbox-windows-acl@0.1.1-rc.2':
     hash: 95f08c832bdd61116ad131c417d5fbe3a9c0c1a1102bb8fbcc4ecb94e6808277
@@ -129,7 +129,7 @@ importers:
         version: 0.1.1-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-attachment@0.1.1-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-brand@0.1.1-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.1-rc.2(@deepseek-ai/cordis@4.0.2)))(@deepseek-ai/dsh-invariants@0.1.1-rc.2(@deepseek-ai/cordis@4.0.2)))(@deepseek-ai/dsh-brand@0.1.1-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.1-rc.2(@deepseek-ai/cordis@4.0.2)))(@deepseek-ai/dsh-invariants@0.1.1-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-timeout@0.1.1-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.1-rc.2(@deepseek-ai/cordis@4.0.2)))
       '@deepseek-ai/dsh-llm-pi-ai':
         specifier: 0.1.1-rc.2
-        version: 0.1.1-rc.2(patch_hash=93eae4245fc452559290c141fd83eb1d02120e57151a5a1225171a5773eb48cb)(1cbf5e8c898c8fb7870ebc22e45d5d8d)
+        version: 0.1.1-rc.2(patch_hash=e7570f23c89fb006c9444686dba376af7174b2cea6a7483b96a48bc5189f5599)(1cbf5e8c898c8fb7870ebc22e45d5d8d)
       '@deepseek-ai/dsh-output-retention':
         specifier: 0.1.1-rc.2
         version: 0.1.1-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.1-rc.2(@deepseek-ai/cordis@4.0.2))
@@ -277,6 +277,9 @@ importers:
       jsdom:
         specifier: 26.1.0
         version: 26.1.0
+      lodash-es:
+        specifier: ^4.18.1
+        version: 4.18.1
       mammoth:
         specifier: 1.11.0
         version: 1.11.0
@@ -554,6 +557,9 @@ importers:
       '@types/lodash':
         specifier: ^4.17.5
         version: 4.17.21
+      '@types/lodash-es':
+        specifier: ^4.17.12
+        version: 4.17.12
       '@types/markdown-it':
         specifier: ^14
         version: 14.1.2
@@ -4619,6 +4625,9 @@ packages:
   '@types/linkify-it@5.0.0':
     resolution: {integrity: sha512-sVDA58zAw4eWAffKOaQH5/5j3XeayukzDk+ewSsnv3p4yJEZHCCzMDiZM8e0OUrRvmpGZ85jf4yDHkHsgBNr9Q==}
 
+  '@types/lodash-es@4.17.12':
+    resolution: {integrity: sha512-0NgftHUcV4v34VhXm8QBSftKVXtbkBG3ViCjs6+eJ5a6y6Mi/jiFGPc1sC7QK+9BFhWrURE3EOggmWaSxL9OzQ==}
+
   '@types/lodash@4.17.21':
     resolution: {integrity: sha512-FOvQ0YPD5NOfPgMzJihoT+Za5pdkDJWcbpuj1DjaKZIr/gxodQjY/uWEFlTNqW2ugXHUiL8lRQgw63dzKHZdeQ==}
 
@@ -7629,8 +7638,8 @@ packages:
     resolution: {integrity: sha512-iPZK6eYjbxRu3uB4/WZ3EsEIMJFMqAoopl3R+zuq0UjcAm/MO6KCweDgPfP3elTztoKP3KtnVHxTn2NHBSDVUw==}
     engines: {node: '>=10'}
 
-  lodash-es@4.17.23:
-    resolution: {integrity: sha512-kVI48u3PZr38HdYz98UmfPnXl2DXrpdctLrFLCd3kOx1xUkOmpFPx7gCWWM5MPkL/fD8zb+Ph0QzjGFs4+hHWg==}
+  lodash-es@4.18.1:
+    resolution: {integrity: sha512-J8xewKD/Gk22OZbhpOVSwcs60zhd95ESDwezOFuA3/099925PdHJ7OFHNTGtajL3AlZkykD32HykiMo+BIBI8A==}
 
   lodash.curry@4.1.1:
     resolution: {integrity: sha512-/u14pXGviLaweY5JI0IUzgzF2J6Ne8INyzAZjImcryjgkZ+ebruBxy2/JaOOkTqScddcYtakjhSaeemV8lR0tA==}
@@ -11494,7 +11503,7 @@ snapshots:
       '@deepseek-ai/cordis': 4.0.2
       '@deepseek-ai/dsh-invariants': 0.1.1-rc.2(@deepseek-ai/cordis@4.0.2)
 
-  '@deepseek-ai/dsh-llm-pi-ai@0.1.1-rc.2(patch_hash=93eae4245fc452559290c141fd83eb1d02120e57151a5a1225171a5773eb48cb)(1cbf5e8c898c8fb7870ebc22e45d5d8d)':
+  '@deepseek-ai/dsh-llm-pi-ai@0.1.1-rc.2(patch_hash=e7570f23c89fb006c9444686dba376af7174b2cea6a7483b96a48bc5189f5599)(1cbf5e8c898c8fb7870ebc22e45d5d8d)':
     dependencies:
       '@deepseek-ai/cordis': 4.0.2
       '@deepseek-ai/dsh-attachment': 0.1.1-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-brand@0.1.1-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.1-rc.2(@deepseek-ai/cordis@4.0.2)))(@deepseek-ai/dsh-invariants@0.1.1-rc.2(@deepseek-ai/cordis@4.0.2))
@@ -14308,6 +14317,10 @@ snapshots:
 
   '@types/linkify-it@5.0.0': {}
 
+  '@types/lodash-es@4.17.12':
+    dependencies:
+      '@types/lodash': 4.17.21
+
   '@types/lodash@4.17.21': {}
 
   '@types/markdown-it@14.1.2':
@@ -16184,7 +16197,7 @@ snapshots:
   dagre-d3-es@7.0.14:
     dependencies:
       d3: 7.9.0
-      lodash-es: 4.17.23
+      lodash-es: 4.18.1
 
   dash-video-element@0.3.1:
     dependencies:
@@ -18114,7 +18127,7 @@ snapshots:
     dependencies:
       p-locate: 5.0.0
 
-  lodash-es@4.17.23: {}
+  lodash-es@4.18.1: {}
 
   lodash.curry@4.1.1: {}
 

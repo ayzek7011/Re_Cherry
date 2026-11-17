@@ -5,7 +5,7 @@ import i18n from '@renderer/i18n'
 import { getModelUniqId } from '@renderer/services/ModelService'
 import type { Model, Provider } from '@renderer/types'
 import { Modal } from 'antd'
-import { first } from 'lodash'
+import { first } from 'lodash-es'
 import { useCallback, useMemo, useState } from 'react'
 
 interface ShowParams {

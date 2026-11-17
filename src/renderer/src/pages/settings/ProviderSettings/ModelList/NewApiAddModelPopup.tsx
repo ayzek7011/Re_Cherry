@@ -8,7 +8,7 @@ import { getDefaultGroupName } from '@renderer/utils'
 import { isNewApiProvider } from '@renderer/utils/provider'
 import type { FormProps } from 'antd'
 import { Button, Flex, Form, Input, Modal, Select } from 'antd'
-import { find } from 'lodash'
+import { find } from 'lodash-es'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 

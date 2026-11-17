@@ -5,7 +5,6 @@ import { modelGenerating } from '@renderer/hooks/useRuntime'
 import { useSettings } from '@renderer/hooks/useSettings'
 import { useShortcut } from '@renderer/hooks/useShortcuts'
 import { useShowAssistants, useShowTopics } from '@renderer/hooks/useStore'
-import AgentSettingsPopup from '@renderer/pages/settings/AgentSettings/AgentSettingsPopup'
 import { useAppDispatch } from '@renderer/store'
 import { setNarrowMode } from '@renderer/store/settings'
 import type { Assistant, Topic } from '@renderer/types'
@@ -110,13 +109,17 @@ const HeaderNavbar: FC<Props> = ({ activeAssistant, setActiveAssistant, activeTo
             }
             mouseEnterDelay={0.4}>
             <WorkingDirChip
-              onClick={() => {
+              onClick={async () => {
                 const dir = activeAssistant.workMode?.workingDir
                 if (dir !== undefined && dir.length > 0) {
                   // 自定义工作目录：沙箱按会话 cwd 放行（SandboxPolicyService.resolve），直接外部打开
                   void window.api.openPath(dir)
                 } else {
-                  // 默认围栏（数据文件夹 .agent）属内部实现：引导去权限模式页设置
+                  // 默认围栏（数据文件夹 .agent）属内部实现：引导去权限模式页设置。
+                  // 弹窗连带 AgentSettings→CodeEditor/SelectModelPopup 链（低频入口，不进首屏静态图）。
+                  const { default: AgentSettingsPopup } = await import(
+                    '@renderer/pages/settings/AgentSettings/AgentSettingsPopup'
+                  )
                   void AgentSettingsPopup.show({ assistant: activeAssistant, tab: 'permission-mode' })
                 }
               }}>

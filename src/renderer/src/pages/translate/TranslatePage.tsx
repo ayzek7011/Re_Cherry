@@ -118,7 +118,8 @@ const TranslatePage = () => {
     const targetLabel = languageLabel(decided.target)
     // V1 `TranslatePage.tsx:239-242`：auto 源语言先检测再翻译，检测结果用于显示与历史落库。
     // fork 缝：只走离线 franc 档（V1 的 llm 档依赖已下线的老管线），检测不出则保持 null。
-    const detected = source === 'auto' ? detectLanguage(text) : null
+    // franc-min 动态装载（不进首屏 eager 图），await 后再进入翻译单飞。
+    const detected = source === 'auto' ? await detectLanguage(text) : null
     setDetectedLanguage(detected)
 
     cancelledRef.current = false

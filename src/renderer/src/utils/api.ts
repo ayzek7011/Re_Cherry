@@ -1,7 +1,7 @@
 import store from '@renderer/store'
 import type { VertexProvider } from '@renderer/types'
 import { formatApiHost, withoutTrailingSlash } from '@shared/utils'
-import { trim } from 'lodash'
+import { trim } from 'lodash-es'
 
 // Re-export from shared, for backward compatibility
 export {

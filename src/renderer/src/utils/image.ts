@@ -1,7 +1,6 @@
 import { loggerService } from '@logger'
 import i18n from '@renderer/i18n'
 import { parseDataUrl } from '@shared/utils'
-import imageCompression from 'browser-image-compression'
 import * as htmlToImage from 'html-to-image'
 import { Base64 } from 'js-base64'
 import mime from 'mime'
@@ -28,6 +27,9 @@ export const convertToBase64 = (file: File): Promise<string | ArrayBuffer | null
  * @returns {Promise<File>} 压缩后的图像文件
  */
 export const compressImage = async (file: File): Promise<File> => {
+  // browser-image-compression 动态装载（问题5 #5）：低频路径不进首屏静态图
+  // （懒加载先例 exportBackends.ts:723）。
+  const { default: imageCompression } = await import('browser-image-compression')
   return await imageCompression(file, {
     maxSizeMB: 1,
     maxWidthOrHeight: 300,

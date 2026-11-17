@@ -2,7 +2,7 @@ import { createSelector } from '@reduxjs/toolkit'
 import type { RootState } from '@renderer/store'
 import { useAppDispatch, useAppSelector } from '@renderer/store'
 import { setTagsOrder, updateTagCollapse } from '@renderer/store/assistants'
-import { flatMap, groupBy, uniq } from 'lodash'
+import { flatMap, groupBy, uniq } from 'lodash-es'
 import { useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 

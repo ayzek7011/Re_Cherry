@@ -1,5 +1,5 @@
 import { Collapse } from 'antd'
-import { merge } from 'lodash'
+import { merge } from 'lodash-es'
 import { ChevronRight } from 'lucide-react'
 import type { FC } from 'react'
 import { memo, useMemo, useState } from 'react'

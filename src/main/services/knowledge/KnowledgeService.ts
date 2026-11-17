@@ -259,8 +259,53 @@ export class KnowledgeService {
     if (document === undefined) {
       throw notAttachedError(nameOrPath, documents)
     }
-    if (path.extname(document.path).toLowerCase() !== '.pdf') {
-      throw new Error(`ocr_document only supports PDF documents; "${document.name}" is not a PDF`)
+    return this.ocrDocumentAtPath(topicId, document.name, document.path, signal)
+  }
+
+  /**
+   * documents_extract 外置工具的文档处理臂（2026-10-21 用户裁决）：按绝对路径走
+   * 文档处理通道，与 ocrTurnDocument 共用同一内核（ocrDocumentAtPath）——附件线
+   * 与磁盘线同权，不立第二套语义。服务商未登记/未配置/非 PDF 如实报可行动错误。
+   */
+  async processDocumentFromDisk(
+    topicId: string,
+    filePath: string,
+    signal?: AbortSignal
+  ): Promise<{ name: string; text: string }> {
+    return this.ocrDocumentAtPath(topicId, path.basename(filePath), filePath, signal)
+  }
+
+  /**
+   * documents_extract 外置工具的 markitdown 臂：按绝对路径抽取文档文本。与附件读
+   * 共用同一 extractFromFile 引擎（pdf 文本层 / doc / docx / pptx / xlsx / odt 族 /
+   * epub / html / 纯文本，未知扩展名按文本尝试）。空抽取返回中性提示（与
+   * readTurnDocument 同出口，不静默成功）。
+   */
+  async readDocumentFromDisk(filePath: string, signal?: AbortSignal): Promise<{ name: string; text: string }> {
+    const name = path.basename(filePath)
+    const text = (await extractFromFile(filePath, { signal })).text
+    if (text.trim().length === 0) {
+      logger.info(`document: "${name}" produced no extractable text (empty or scanned)`)
+      return { name, text: NO_EXTRACTABLE_TEXT_NOTE }
+    }
+    logger.info(`document: extracted ${text.length} chars from disk file "${name}"`)
+    return { name, text }
+  }
+
+  /**
+   * OCR 内核（附件登记臂与磁盘路径臂共用）：PDF-only、按本轮登记的文档处理服务商
+   * 路由（preprocessChannel，发送时快照）、按话题中止源（topic stop 不断在途工具，
+   * 暂停到达主进程时直接 abort）、单次 8 分钟预算。空 OCR 文本如实报错（页空白或
+   * 不可读），不静默降级。
+   */
+  private async ocrDocumentAtPath(
+    topicId: string,
+    name: string,
+    filePath: string,
+    signal?: AbortSignal
+  ): Promise<{ name: string; text: string }> {
+    if (path.extname(filePath).toLowerCase() !== '.pdf') {
+      throw new Error(`documents_extract/ocr_document only supports PDF documents; "${name}" is not a PDF`)
     }
     const providerId = preprocessChannel.getTurnProviderId(topicId)
     if (providerId === undefined) {
@@ -270,7 +315,7 @@ export class KnowledgeService {
     if (config === undefined) {
       throw new Error(`document-processing provider "${providerId}" is not configured yet (设置 → 文档处理)`)
     }
-    logger.info(`document processing engaged for "${document.name}" via provider "${config.id}" (ocr_document tool)`)
+    logger.info(`document processing engaged for "${name}" via provider "${config.id}"`)
     // exec.signal（暂停/中止）与 8 分钟预算在 parsePdfWithProvider 内合并；
     // 打断走各执行缝的取消缝（local: cancel+部分缓存 / vision: HTTP abort+部分缓存）。
     //
@@ -282,12 +327,12 @@ export class KnowledgeService {
     const unregisterWork = registerTopicWork(topicId, workController)
     const mergedSignal = signal === undefined ? workController.signal : AbortSignal.any([signal, workController.signal])
     try {
-      const text = await parsePdfWithProvider(config, document.path, mergedSignal)
+      const text = await parsePdfWithProvider(config, filePath, mergedSignal)
       if (text.trim().length === 0) {
-        throw new Error(`document "${document.name}" produced no OCR text — pages may be blank or unreadable`)
+        throw new Error(`document "${name}" produced no OCR text — pages may be blank or unreadable`)
       }
-      logger.info(`document processing produced ${text.length} chars for "${document.name}" (${config.id})`)
-      return { name: document.name, text }
+      logger.info(`document processing produced ${text.length} chars for "${name}" (${config.id})`)
+      return { name, text }
     } finally {
       unregisterWork()
     }

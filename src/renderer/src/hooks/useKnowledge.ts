@@ -30,7 +30,7 @@ import {
 } from '@renderer/store/knowledge'
 import type { FileMetadata, KnowledgeBase, KnowledgeItem, KnowledgeNoteItem, ProcessingStatus } from '@renderer/types'
 import { isKnowledgeFileItem, isKnowledgeNoteItem, isKnowledgeVideoItem } from '@renderer/types'
-import { cloneDeep } from 'lodash'
+import { cloneDeep } from 'lodash-es'
 import { useCallback } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { v4 as uuidv4 } from 'uuid'

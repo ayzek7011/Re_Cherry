@@ -8,7 +8,7 @@ import {
   isPerplexityProvider,
   isVertexProvider
 } from '@renderer/utils/provider'
-import { cloneDeep } from 'lodash'
+import { cloneDeep } from 'lodash-es'
 
 /**
  * 按 provider 类型规范化 apiHost（从 aiCore 迁移而来，原 providerConfig.formatProviderApiHost）。

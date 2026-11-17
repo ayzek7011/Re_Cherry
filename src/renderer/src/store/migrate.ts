@@ -39,7 +39,7 @@ import {
   isSupportStreamOptionsProvider
 } from '@renderer/utils/provider'
 import { defaultByPassRules } from '@shared/config/constant'
-import { isEmpty } from 'lodash'
+import { isEmpty } from 'lodash-es'
 import { createMigrate } from 'redux-persist'
 
 import type { RootState } from '.'

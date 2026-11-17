@@ -177,6 +177,10 @@
       "title": "备份进度",
       "writing_data": "写入数据..."
     },
+    "restore_pending": {
+      "message": "启动时还原备份数据未完成。您的原有数据未受影响，已完整保留。备份副本已保存，将在下次启动时自动重试。",
+      "title": "备份还原未完成"
+    },
     "title": "数据备份"
   },
   "button": {
@@ -931,6 +935,7 @@
       "file_format": "备份文件格式错误"
     },
     "base64DataTruncated": "Base64 图片数据已截断，大小",
+    "message_send_failed": "消息发送失败，请重试",
     "boundary": {
       "default": {
         "devtools": "打开调试面板",
@@ -1377,7 +1382,8 @@
     },
     "edit": {
       "resend_failed": "消息重发失败，请重试",
-      "save_failed": "消息保存失败，请重试"
+      "save_failed": "消息保存失败，请重试",
+      "branch_fallback": "分支重发失败，已在当前话题重发"
     },
     "error": {
       "chunk_overlap_too_large": "分段重叠不能大于分段大小",
@@ -2528,6 +2534,10 @@
           "saveAttachment": {
             "description": "把附件保存为工作区中的文件。",
             "name": "附件入库"
+          },
+          "documentsExtract": {
+            "description": "按路径抽取磁盘上文档文件的文字（pdf/docx/pptx/xlsx/epub 等）。扫描件走文档处理通道。",
+            "name": "文档抽取"
           },
           "todo": {
             "description": "维护当前会话的任务清单。",

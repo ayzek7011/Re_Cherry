@@ -20,7 +20,7 @@ import { isLocalAi } from '@renderer/config/env'
 import { SYSTEM_MODELS } from '@renderer/config/models'
 import { INITIAL_STATE_EXCLUDED_PROVIDER_IDS, SYSTEM_PROVIDERS_CONFIG } from '@renderer/config/providers'
 import type { Model, Provider } from '@renderer/types'
-import { omit, uniqBy } from 'lodash'
+import { omit, uniqBy } from 'lodash-es'
 
 type LlmSettings = {
   ollama: {

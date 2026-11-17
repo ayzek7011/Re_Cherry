@@ -1,5 +1,4 @@
 import { SettingOutlined } from '@ant-design/icons'
-import { showErrorDetailPopup } from '@renderer/components/ErrorDetailModal'
 import { useTimer } from '@renderer/hooks/useTimer'
 import { getHttpMessageLabel, getProviderLabel } from '@renderer/i18n/label'
 import type { DiagnosisResult } from '@renderer/services/ErrorDiagnosisService'
@@ -126,7 +125,10 @@ const MessageErrorInfo: React.FC<{ block: ErrorMessageBlock; message: Message }>
     [setTimeoutTimer, dispatch, message.topicId, message.id, block.id]
   )
 
-  const showErrorDetail = () => {
+  // 动态加载：ErrorDetailModal 连带 CodeViewer/mdast 共享段 409KB，
+  // 属低频点击路径，不进首屏图（懒加载先例 exportBackends.ts:723）。
+  const showErrorDetail = async () => {
+    const { showErrorDetailPopup } = await import('@renderer/components/ErrorDetailModal')
     showErrorDetailPopup({
       error: block.error,
       blockId: block.id,

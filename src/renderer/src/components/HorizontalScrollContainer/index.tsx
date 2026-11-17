@@ -1,6 +1,6 @@
 import Scrollbar from '@renderer/components/Scrollbar'
 import { cn } from '@renderer/utils'
-import { throttle } from 'lodash'
+import { throttle } from 'lodash-es'
 import { ChevronRight } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'

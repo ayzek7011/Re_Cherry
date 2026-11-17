@@ -34,7 +34,7 @@ import { AssistantMessageStatus, MessageBlockType } from '@renderer/types/newMes
 import { getMainTextContent } from '@renderer/utils/messageUtils/find'
 import { materializeKernelTopicRow, requestTopicSwitch } from '@renderer/utils/topicBranch'
 import { t as translate } from 'i18next'
-import { difference } from 'lodash'
+import { difference } from 'lodash-es'
 import { useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -108,14 +108,19 @@ export function useMessageOperations(topic: Topic) {
       kind: 'resend' | 'regenerate' = 'resend'
     ): Promise<boolean> => {
       const trimmed = (text ?? '').trim()
+      // 锚点单点重读：调用方（编辑重发）传入的 message 是渲染期闭包快照，编辑器新增的
+      // 附件块只存在于 store 实体里（editMessageBlocks 已 await 提交）。按旧 blocks 收
+      // 附件会静默丢掉新附件，这里从 store 重读一次作为唯一真相源；不把编辑后的 files
+      // 另传进来，避免制造第二个真相源。
+      const anchor: Message = store.getState().messages.entities[anchorMessage.id] ?? anchorMessage
       // 分支重发继承锚点消息的附件（图片/文档）：fork 的 seed 截到锚点轮之前，
       // 重发消息不带 file 的话图片会在子分支里静默消失（用户卡片无图、模型也无图可读）。
-      const files = collectMessageFiles(store.getState(), anchorMessage)
+      const files = collectMessageFiles(store.getState(), anchor)
       if (trimmed.length === 0 && files.length === 0) {
         logger.warn('[branchResend] nothing to send')
         return false
       }
-      const forked = await forkBranchToKernel(topic.id, anchorMessage)
+      const forked = await forkBranchToKernel(topic.id, anchor)
       if (forked === null) return false
 
       const preview = trimmed.replace(/\s+/g, ' ').slice(0, 30)
@@ -693,11 +698,14 @@ export function useMessageOperations(topic: Topic) {
       dispatch(newMessagesActions.updateMessage({ topicId: topic.id, messageId: message.id, updates: messageUpdates }))
       const ok = await startBranchResend(message, assistant, mainTextBlock.content)
       if (!ok) {
-        // 锚点不可解析时回退旧逻辑（原地重置并重发）
+        // 锚点不可解析时回退旧逻辑（原地重置并重发）。回退是用户可见的降级：
+        // 原地重发会丢弃分支切换，必须给出信号而不是静默吞掉。
+        logger.warn('[resendUserMessageWithEdit] branch resend failed, falling back to in-place resend')
+        window.toast.warning(t('message.edit.branch_fallback'))
         await dispatch(resendUserMessageWithEditThunk(topic.id, message, assistant))
       }
     },
-    [dispatch, editMessageBlocks, startBranchResend, topic.id]
+    [dispatch, editMessageBlocks, startBranchResend, t, topic.id]
   )
 
   /**

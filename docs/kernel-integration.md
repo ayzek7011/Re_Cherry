@@ -65,7 +65,7 @@ DSH 内核（DeepSeek Harness，Cordis 插件宿主）在 main 进程内运行�
 | `kernel/lightLlmModalities.ts` | 非会话模态：embed / rerank / 视觉文档 / 图像 |
 | `kernel/dsmlRepair.ts` | 响应端把泄漏的 DSML 标记转回真 tool-call |
 | `kernel/modelStreamAbort.ts` | 按话题登记中断控制器，按暂停键切断在途模型流 |
-| `kernel/*Tool.ts` | 内置工具：`read_document`、`ocr_document`、`web_search`、`knowledge_search`、`skill`、`memory`、`generate_image`、`describe_images`、`save_attachment`、`ask_user_question` |
+| `kernel/*Tool.ts` | 内置工具：`read_document`、`ocr_document`、`web_search`、`knowledge_search`、`skill`、`memory`、`generate_image`、`describe_images`、`save_attachment`、`ask_user_question`、`documents_extract`（外置，工作模式） |
 
 ## 启动顺序是安全属性
 

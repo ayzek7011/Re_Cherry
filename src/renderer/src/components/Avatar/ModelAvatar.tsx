@@ -2,7 +2,7 @@ import { getModelLogo } from '@renderer/config/models'
 import type { Model } from '@renderer/types'
 import type { AvatarProps } from 'antd'
 import { Avatar } from 'antd'
-import { first } from 'lodash'
+import { first } from 'lodash-es'
 import type { FC } from 'react'
 
 interface Props {
