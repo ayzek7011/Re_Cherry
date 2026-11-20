@@ -1,10 +1,4 @@
-import {
-  DEFAULT_CONTEXTCOUNT,
-  DEFAULT_MAX_TOKENS,
-  DEFAULT_TEMPERATURE,
-  MAX_CONTEXT_COUNT,
-  UNLIMITED_CONTEXT_COUNT
-} from '@renderer/config/constant'
+import { DEFAULT_MAX_TOKENS, DEFAULT_TEMPERATURE } from '@renderer/config/constant'
 import { getStoreProviders } from '@renderer/hooks/useStore'
 import i18n from '@renderer/i18n'
 import store from '@renderer/store'
@@ -25,7 +19,6 @@ import { getProviderByModel } from './ProviderService'
  * - **MaxTokens disabled**: Use provider defaults by default
  * - **TopP disabled**: Use provider defaults by default
  * - **Streaming enabled**: Provides real-time response for better UX
- * - **Standard context count**: Balanced memory usage and conversation length
  */
 export const DEFAULT_ASSISTANT_SETTINGS = {
   maxTokens: DEFAULT_MAX_TOKENS,
@@ -34,7 +27,6 @@ export const DEFAULT_ASSISTANT_SETTINGS = {
   enableTemperature: false,
   topP: 1,
   enableTopP: false,
-  contextCount: DEFAULT_CONTEXTCOUNT,
   streamOutput: true,
   defaultModel: undefined,
   customParameters: [],
@@ -147,16 +139,14 @@ export { getProviderByModel }
  * Retrieves and normalizes assistant settings with special transformation handling.
  *
  * **Special Transformations:**
- * 1. **Context Count**: Converts `MAX_CONTEXT_COUNT` to `UNLIMITED_CONTEXT_COUNT` for internal processing
- * 2. **Max Tokens**: Only returns a value when `enableMaxTokens` is true, otherwise returns `undefined`
- * 3. **Max Tokens Validation**: Ensures maxTokens > 0, falls back to `DEFAULT_MAX_TOKENS` if invalid
- * 4. **Fallback Defaults**: Applies system defaults for all undefined/missing settings
+ * 1. **Max Tokens**: Only returns a value when `enableMaxTokens` is true, otherwise returns `undefined`
+ * 2. **Max Tokens Validation**: Ensures maxTokens > 0, falls back to `DEFAULT_MAX_TOKENS` if invalid
+ * 3. **Fallback Defaults**: Applies system defaults for all undefined/missing settings
  *
  * @param assistant - The assistant instance to extract settings from
  * @returns Normalized assistant settings with all transformations applied
  */
 export const getAssistantSettings = (assistant: Assistant): AssistantSettings => {
-  const contextCount = assistant?.settings?.contextCount ?? DEFAULT_CONTEXTCOUNT
   const getAssistantMaxTokens = () => {
     if (assistant.settings?.enableMaxTokens) {
       const maxTokens = assistant.settings.maxTokens
@@ -169,7 +159,6 @@ export const getAssistantSettings = (assistant: Assistant): AssistantSettings =>
   }
 
   return {
-    contextCount: contextCount === MAX_CONTEXT_COUNT ? UNLIMITED_CONTEXT_COUNT : contextCount,
     temperature: assistant?.settings?.temperature ?? DEFAULT_TEMPERATURE,
     enableTemperature: assistant?.settings?.enableTemperature ?? DEFAULT_ASSISTANT_SETTINGS.enableTemperature,
     topP: assistant?.settings?.topP ?? DEFAULT_ASSISTANT_SETTINGS.topP,

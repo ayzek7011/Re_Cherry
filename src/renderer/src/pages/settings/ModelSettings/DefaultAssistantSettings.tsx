@@ -4,7 +4,7 @@ import { ResetIcon } from '@renderer/components/Icons'
 import { HStack } from '@renderer/components/Layout'
 import Selector from '@renderer/components/Selector'
 import { TopView } from '@renderer/components/TopView'
-import { DEFAULT_CONTEXTCOUNT, DEFAULT_TEMPERATURE } from '@renderer/config/constant'
+import { DEFAULT_TEMPERATURE } from '@renderer/config/constant'
 import { useTheme } from '@renderer/context/ThemeProvider'
 import { useDefaultAssistant } from '@renderer/hooks/useAssistant'
 import useAssistantIdentityImage from '@renderer/hooks/useAssistantIdentityImage'
@@ -39,7 +39,6 @@ const AssistantSettings: FC = () => {
   const { defaultAssistant, updateDefaultAssistant } = useDefaultAssistant()
   const [temperature, setTemperature] = useState(defaultAssistant.settings?.temperature ?? DEFAULT_TEMPERATURE)
   const [enableTemperature, setEnableTemperature] = useState(defaultAssistant.settings?.enableTemperature ?? false)
-  const [contextCount, setContextCount] = useState(defaultAssistant.settings?.contextCount ?? DEFAULT_CONTEXTCOUNT)
   const [enableMaxTokens, setEnableMaxTokens] = useState(defaultAssistant?.settings?.enableMaxTokens ?? false)
   const [maxTokens, setMaxTokens] = useState(defaultAssistant?.settings?.maxTokens ?? 0)
   const [topP, setTopP] = useState(defaultAssistant.settings?.topP ?? 1)
@@ -64,7 +63,6 @@ const AssistantSettings: FC = () => {
         ...defaultAssistant.settings,
         temperature: settings.temperature ?? temperature,
         enableTemperature: settings.enableTemperature ?? enableTemperature,
-        contextCount: settings.contextCount ?? contextCount,
         enableMaxTokens: settings.enableMaxTokens ?? enableMaxTokens,
         maxTokens: settings.maxTokens ?? maxTokens,
         streamOutput: settings.streamOutput ?? true,
@@ -83,16 +81,12 @@ const AssistantSettings: FC = () => {
       }
     }
   const onTemperatureChange = handleChange(setTemperature, (value) => onUpdateAssistantSettings({ temperature: value }))
-  const onContextCountChange = handleChange(setContextCount, (value) =>
-    onUpdateAssistantSettings({ contextCount: value })
-  )
   const onMaxTokensChange = handleChange(setMaxTokens, (value) => onUpdateAssistantSettings({ maxTokens: value }))
   const onTopPChange = handleChange(setTopP, (value) => onUpdateAssistantSettings({ topP: value }))
 
   const onReset = () => {
     setTemperature(DEFAULT_TEMPERATURE)
     setEnableTemperature(true)
-    setContextCount(DEFAULT_CONTEXTCOUNT)
     setEnableMaxTokens(false)
     setMaxTokens(0)
     setTopP(1)
@@ -306,36 +300,6 @@ const AssistantSettings: FC = () => {
           </Col>
         </Row>
       )}
-      <Divider style={{ margin: '2px 0' }} />
-      <Row align="middle">
-        <Label>{t('chat.settings.context_count.label')}</Label>
-        <Tooltip title={t('chat.settings.context_count.tip')}>
-          <QuestionIcon />
-        </Tooltip>
-      </Row>
-      <Row align="middle" gutter={20} style={{ marginTop: -5, marginBottom: -10 }}>
-        <Col span={19}>
-          <Slider
-            min={0}
-            max={20}
-            marks={{ 0: '0', 5: '5', 10: '10', 15: '15', 20: t('chat.settings.max') }}
-            onChange={setContextCount}
-            onChangeComplete={onContextCountChange}
-            value={typeof contextCount === 'number' ? contextCount : 0}
-            step={1}
-          />
-        </Col>
-        <Col span={5}>
-          <InputNumber
-            min={0}
-            max={20}
-            step={1}
-            value={contextCount}
-            onChange={onContextCountChange}
-            style={{ width: '100%' }}
-          />
-        </Col>
-      </Row>
       <Divider style={{ margin: '2px 0' }} />
       <Flex justify="space-between" align="center">
         <HStack alignItems="center">

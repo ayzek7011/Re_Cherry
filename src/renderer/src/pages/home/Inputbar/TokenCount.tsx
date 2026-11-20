@@ -1,8 +1,7 @@
 import { HStack, VStack } from '@renderer/components/Layout'
-import MaxContextCount from '@renderer/components/MaxContextCount'
 import { useSettings } from '@renderer/hooks/useSettings'
-import { Divider, Popover } from 'antd'
-import { ArrowUp, MenuIcon } from 'lucide-react'
+import { Popover } from 'antd'
+import { MenuIcon } from 'lucide-react'
 import type { FC } from 'react'
 import { useTranslation } from 'react-i18next'
 import styled from 'styled-components'
@@ -10,10 +9,9 @@ import styled from 'styled-components'
 type Props = {
   estimateTokenCount: number
   inputTokenCount: number
-  contextCount: { current: number; max: number }
 } & React.HTMLAttributes<HTMLDivElement>
 
-const TokenCount: FC<Props> = ({ estimateTokenCount, inputTokenCount, contextCount }) => {
+const TokenCount: FC<Props> = ({ estimateTokenCount, inputTokenCount }) => {
   const { t } = useTranslation()
   const { showInputEstimatedTokens } = useSettings()
 
@@ -24,17 +22,6 @@ const TokenCount: FC<Props> = ({ estimateTokenCount, inputTokenCount, contextCou
   const PopoverContent = () => {
     return (
       <VStack w="185px" background="100%">
-        <HStack justifyContent="space-between" w="100%">
-          <Text>{t('chat.input.context_count.tip')}</Text>
-          <Text>
-            <HStack style={{ alignItems: 'center' }}>
-              {contextCount.current}
-              <SlashSeparatorSpan>/</SlashSeparatorSpan>
-              <MaxContextCount maxContext={contextCount.max} />
-            </HStack>
-          </Text>
-        </HStack>
-        <Divider style={{ margin: '5px 0' }} />
         <HStack justifyContent="space-between" w="100%">
           <Text>{t('chat.input.estimated_tokens.tip')}</Text>
           <Text>{estimateTokenCount}</Text>
@@ -49,13 +36,6 @@ const TokenCount: FC<Props> = ({ estimateTokenCount, inputTokenCount, contextCou
         <HStack>
           <HStack style={{ alignItems: 'center' }}>
             <MenuIcon size={12} className="icon" />
-            {contextCount.current}
-            <SlashSeparatorSpan>/</SlashSeparatorSpan>
-            <MaxContextCount maxContext={contextCount.max} />
-          </HStack>
-          <Divider type="vertical" style={{ marginTop: 3, marginLeft: 5, marginRight: 3 }} />
-          <HStack style={{ alignItems: 'center' }}>
-            <ArrowUp size={12} className="icon" />
             {inputTokenCount}
             <SlashSeparatorSpan>/</SlashSeparatorSpan>
             {estimateTokenCount}

@@ -11,7 +11,7 @@ import { useShortcut } from '@renderer/hooks/useShortcuts'
 import { useTimer } from '@renderer/hooks/useTimer'
 import SelectionBox from '@renderer/pages/home/Messages/SelectionBox'
 import { EVENT_NAMES, EventEmitter } from '@renderer/services/EventService'
-import { getContextCount, getGroupedMessages } from '@renderer/services/MessagesService'
+import { getGroupedMessages } from '@renderer/services/MessagesService'
 import { estimateHistoryTokens } from '@renderer/services/TokenService'
 import store, { useAppDispatch } from '@renderer/store'
 import { messageBlocksSelectors, updateOneBlock } from '@renderer/store/messageBlock'
@@ -211,8 +211,7 @@ const Messages: React.FC<MessagesProps> = ({
       estimateTokensThrottledRef.current = throttle((currentMessages: Message[], currentAssistant: Assistant) => {
         void runAsyncFunction(async () => {
           void EventEmitter.emit(EVENT_NAMES.ESTIMATED_TOKEN_COUNT, {
-            tokensCount: await estimateHistoryTokens(currentAssistant, currentMessages),
-            contextCount: getContextCount(currentAssistant, currentMessages)
+            tokensCount: await estimateHistoryTokens(currentAssistant, currentMessages)
           })
         })
       }, 500)

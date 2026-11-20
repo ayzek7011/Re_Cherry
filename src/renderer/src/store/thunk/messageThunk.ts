@@ -336,7 +336,6 @@ const fetchAndProcessAssistantResponseImpl = async (
               .map((server) => `mcp:${server.id}`)
       await kernelChat.sendToKernel(topicId, text, assistantMsgId, triggeringUserMessage.id, {
         reasoningEffort: kernelChat.assistantReasoningLevel(assistant),
-        contextCount: kernelChat.assistantContextCount(assistant),
         builtinTools,
         externalTools: [
           ...(topic?.workMode === true

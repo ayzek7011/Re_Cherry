@@ -14,7 +14,13 @@ const evaluate = (wsUrl, expression) =>
     const ws = new WebSocket(wsUrl)
     const timer = setTimeout(() => reject(new Error('evaluate timeout')), 45000)
     ws.addEventListener('open', () =>
-      ws.send(JSON.stringify({ id: 1, method: 'Runtime.evaluate', params: { expression, awaitPromise: true, returnByValue: true } }))
+      ws.send(
+        JSON.stringify({
+          id: 1,
+          method: 'Runtime.evaluate',
+          params: { expression, awaitPromise: true, returnByValue: true }
+        })
+      )
     )
     ws.addEventListener('message', (event) => {
       const msg = JSON.parse(typeof event.data === 'string' ? event.data : event.data.toString())
@@ -54,7 +60,9 @@ const NAVIGATE = `(async () => {
   for (const r of results) {
     const ok = r.mounted && !r.errorBoundary && r.textLength > 50 && r.hash === '#' + r.route
     if (!ok) failures++
-    console.log(`${ok ? 'OK ' : 'FAIL'} ${r.route} hash=${r.hash} mounted=${r.mounted} errorBoundary=${r.errorBoundary} text=${r.textLength}`)
+    console.log(
+      `${ok ? 'OK ' : 'FAIL'} ${r.route} hash=${r.hash} mounted=${r.mounted} errorBoundary=${r.errorBoundary} text=${r.textLength}`
+    )
   }
   if (failures > 0) {
     console.error('LAZY ROUTE FAILED: ' + failures)

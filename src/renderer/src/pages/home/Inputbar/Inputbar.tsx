@@ -160,7 +160,6 @@ const InputbarInner: FC<InputbarInnerProps> = ({ assistant: initialAssistant, se
   const { assistant, addTopic, model, setModel, updateAssistant } = useAssistant(initialAssistant.id)
   const { sendMessageShortcut, showInputEstimatedTokens, enableQuickPanelTriggers } = useSettings()
   const [estimateTokenCount, setEstimateTokenCount] = useState(0)
-  const [contextCount, setContextCount] = useState({ current: 0, max: 0 })
 
   const { t } = useTranslation()
   const { pauseMessages } = useMessageOperations(topic)
@@ -315,10 +314,9 @@ const InputbarInner: FC<InputbarInnerProps> = ({ assistant: initialAssistant, se
 
     return {
       estimateTokenCount,
-      inputTokenCount: estimateTokenCount,
-      contextCount
+      inputTokenCount: estimateTokenCount
     }
-  }, [config.showTokenCount, contextCount, estimateTokenCount, showInputEstimatedTokens])
+  }, [config.showTokenCount, estimateTokenCount, showInputEstimatedTokens])
 
   const onPause = useCallback(async () => {
     await pauseMessages()
@@ -399,17 +397,9 @@ const InputbarInner: FC<InputbarInnerProps> = ({ assistant: initialAssistant, se
 
   useEffect(() => {
     const _setEstimateTokenCount = debounce(setEstimateTokenCount, 100, { leading: false, trailing: true })
-    // contextCount 与 tokensCount 过同一个 100ms 防抖：旧实现只防抖前者，上下文计数直接 setState
-    // （估算事件每个流式窗口都会推来一次，非防抖路径会立刻触发整棵 Inputbar 重渲染）
-    const _setContextCount = debounce(
-      (next: { current: number; max: number }) => setContextCount({ current: next.current, max: next.max }),
-      100,
-      { leading: false, trailing: true }
-    )
     const unsubscribes = [
-      EventEmitter.on(EVENT_NAMES.ESTIMATED_TOKEN_COUNT, ({ tokensCount, contextCount }) => {
+      EventEmitter.on(EVENT_NAMES.ESTIMATED_TOKEN_COUNT, ({ tokensCount }) => {
         _setEstimateTokenCount(tokensCount)
-        _setContextCount(contextCount)
       }),
       ...[EventEmitter.on(EVENT_NAMES.ADD_NEW_TOPIC, addNewTopic)]
     ]
@@ -418,7 +408,6 @@ const InputbarInner: FC<InputbarInnerProps> = ({ assistant: initialAssistant, se
       unsubscribes.forEach((unsubscribe) => unsubscribe())
       // 卸载后不再有 setState（fire-and-forget 的尾部调用也不能打到已卸载组件）
       _setEstimateTokenCount.cancel()
-      _setContextCount.cancel()
     }
   }, [addNewTopic])
 
@@ -488,7 +477,6 @@ const InputbarInner: FC<InputbarInnerProps> = ({ assistant: initialAssistant, se
         <TokenCount
           estimateTokenCount={tokenCountProps.estimateTokenCount}
           inputTokenCount={tokenCountProps.inputTokenCount}
-          contextCount={tokenCountProps.contextCount}
         />
       )}
       {workModeSwitch}

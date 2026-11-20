@@ -1,7 +1,6 @@
 import type { StreamChunk } from '@deepseek-ai/dsh-llm'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { loggerService } from '@logger'
-import { DEFAULT_CONTEXTCOUNT, MAX_CONTEXT_COUNT, UNLIMITED_CONTEXT_COUNT } from '@renderer/config/constant'
 import { isVisionModel } from '@renderer/config/models'
 import { providerReasoningCompat, type ReasoningCompatProviderInput } from '@renderer/config/reasoningCompat'
 import i18n from '@renderer/i18n'
@@ -418,17 +417,6 @@ export function assistantReasoningLevel(assistant: Assistant): string | undefine
 }
 
 /**
- * 助手的上下文预算（请求消息条数上限）。MAX_CONTEXT_COUNT（"不限"档）折算成
- * UNLIMITED_CONTEXT_COUNT（MessagesService 同一约定）——内核侧把 >= 该值视作不裁剪。
- * 随建册/发送上行（问题 1 R1：渲染层预算此前从不进内核请求端）。
- */
-export function assistantContextCount(assistant: Assistant): number {
-  const setting = assistant.settings?.contextCount
-  if (setting === undefined) return DEFAULT_CONTEXTCOUNT
-  return setting === MAX_CONTEXT_COUNT ? UNLIMITED_CONTEXT_COUNT : setting
-}
-
-/**
  * 确保内核侧存在该话题的 agent/session（幂等）。工作模式不进建册输入——它是渲染层话题开关，随发送参数生效。
  *
  * `dshTopicCreate` 是 **upsert**，对"内核已遗忘的 id"调用
@@ -475,7 +463,6 @@ export async function ensureKernelTopic(topicId: string, assistant: Assistant): 
     maxTokens: assistant.settings?.maxTokens,
     systemPrompt,
     reasoningEffort: assistantReasoningLevel(assistant),
-    contextCount: assistantContextCount(assistant),
     ...(assistant.workMode?.workingDir !== undefined && assistant.workMode.workingDir.length > 0
       ? { workingDir: assistant.workMode.workingDir }
       : {})
@@ -492,8 +479,6 @@ export async function sendToKernel(
   userMessageId?: string,
   options?: {
     reasoningEffort?: string
-    /** 上下文预算（请求消息条数上限；UNLIMITED_CONTEXT_COUNT = 不裁剪）。 */
-    contextCount?: number
     builtinTools?: string[]
     externalTools?: string[]
     tier?: WorkModeApprovalTier

@@ -138,6 +138,30 @@ artifactBuildCompleted: scripts/artifact-build-completed.js
 releaseInfo:
   releaseNotes: |
     <!--LANG:en-->
+    Re_Cherry 1.2.1 - Removes the context-count budget introduced in 1.2.0
+
+    The message-count budget shipped in 1.2.0 could silently cut earlier
+    history in work mode (the assistant default of 5 reached every request).
+    Silent truncation of conversation history is never acceptable, and the
+    large context windows of modern models make a count-based budget obsolete.
+
+    - The context-count setting, its sliders, and the whole chain from
+      settings to the kernel request gate are removed. The patch file is
+      back to its pre-1.2.0 state.
+    - Requests are never trimmed silently. When a provider reaches its
+      context limit, the failure is reported explicitly (error block and
+      toast) instead.
+    <!--LANG:zh-CN-->
+    Re_Cherry 1.2.1 —— 移除 1.2.0 引入的上下文条数预算
+
+    1.2.0 的条数预算在工作模式下会静默裁掉更早的历史（助手默认值 5 被
+    应用到每次请求）。静默截断对话历史不可接受，且现代模型的长上下文
+    窗口已让按条数设预算过时。
+
+    - 彻底拆除上下文条数设置、滑条，以及从设置到内核请求门的整条链路；
+      补丁文件回到 1.2.0 之前的状态。
+    - 请求不再被静默裁剪。达到模型上下文上限时显式报错（错误块与 toast）。
+    <!--LANG:en-->
     Re_Cherry 1.2.0 - Reliability fixes for large chats, files, painting and editing
 
     This round closes five reported problem areas: message sending on very large

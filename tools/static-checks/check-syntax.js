@@ -23,6 +23,42 @@ const { stripTypeScriptTypes } = require('node:module')
 
 const C = require('./lib/common')
 
+// Node 24.x 的 amaro 还接受 `mode: 'transform'`，Node 26 起移除（只留 'strip'）。
+// 本检查不钉死 Node 版本，transform 兜底在探测到不可用时改走仓库自带的 typescript
+// 编译器（transpileModule 与 amaro transform 同语义：完整 TS 构造的语法级解析）。
+let amaroTransformAvailable
+function probeAmaroTransform() {
+  if (amaroTransformAvailable !== undefined) return amaroTransformAvailable
+  try {
+    stripTypeScriptTypes('enum Probe { A }', { mode: 'transform' })
+    amaroTransformAvailable = true
+  } catch {
+    amaroTransformAvailable = false
+  }
+  return amaroTransformAvailable
+}
+
+function tsTransformParse(source) {
+  // typescript 是仓库 devDependency（vitest 链路已在用），解析失败与 amaro 一样抛错。
+  const { transpileModule } = require('typescript')
+  const { diagnostics } = transpileModule(source, {
+    compilerOptions: { isolatedModules: true },
+    reportDiagnostics: true
+  })
+  const syntaxErrors = diagnostics.filter((d) => d.code >= 1000 && d.code < 2000)
+  if (syntaxErrors.length > 0) {
+    throw new Error(syntaxErrors.map((d) => tsFlattenDiagnosticMessageText(d)).join('; '))
+  }
+}
+
+function tsFlattenDiagnosticMessageText(diagnostic) {
+  const text =
+    typeof diagnostic.messageText === 'string'
+      ? diagnostic.messageText
+      : (diagnostic.messageText?.messageText ?? JSON.stringify(diagnostic.messageText))
+  return `TS${diagnostic.code}: ${text}`
+}
+
 /** 该失败是否只是"strip 模式不支持"而非真语法错。 */
 function isStripOnlyLimitation(message) {
   return /strip-only mode|not supported in strip-only|TypeScript enum|namespace|parameter propert|decorator/i.test(
@@ -40,7 +76,11 @@ function checkFile(abs) {
       return { ok: false, detail: `strip 解析失败: ${stripError.message}` }
     }
     try {
-      stripTypeScriptTypes(source, { mode: 'transform' })
+      if (probeAmaroTransform()) {
+        stripTypeScriptTypes(source, { mode: 'transform' })
+      } else {
+        tsTransformParse(source)
+      }
       return { ok: true, mode: 'transform' }
     } catch (transformError) {
       return { ok: false, detail: `transform 解析也失败: ${transformError.message}` }

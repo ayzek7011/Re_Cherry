@@ -70,14 +70,6 @@ export interface KernelTopic {
   systemPrompt?: string
   /** 当前请求使用的思考档位（pi-ai 词汇）；缺省/空串 = 不显式请求（交给 provider 默认）。 */
   reasoningEffort?: string
-  /**
-   * 上下文预算（请求里允许的消息条数上限）。渲染层随建册上行助手的 contextCount
-   * 设置、随发送刷新；请求端经 dsh-llm-pi-ai 补丁的第三个中性门
-   * （globalThis.__recApplyContextBudget，见 contextBudget.ts）按它裁掉最旧历史，
-   * 防大对话每 step 全量 deriveMessages 触发 provider 上限拒绝（问题 1 R1）。
-   * 缺省/undefined = 不裁剪（UNLIMITED_CONTEXT_COUNT 语义）。
-   */
-  contextCount?: number
   /** 分支血缘：有值 = forkTopic 切出的子分支会话（父会话 id）；未定义 = 普通话题/窗口根。侧栏列表只显示根。 */
   parentTopicId?: string
   /** 截断删除后被取代：值为替代它的新会话 id；可见层与清扫只认新会话。 */
@@ -94,8 +86,6 @@ interface KernelTopicInput {
   maxTokens?: number
   systemPrompt?: string
   reasoningEffort?: string
-  /** 上下文预算（消息条数上限）；缺省 = 不裁剪。 */
-  contextCount?: number
   /** 新话题的工作目录（= dsh 会话 header.cwd；仅新建话题生效）。 */
   workingDir?: string
 }
@@ -750,15 +740,6 @@ export function getTopic(id: string): KernelTopic | undefined {
   return topics.get(id)
 }
 
-/**
- * 会话 id → 上下文预算（contextBudget.ts 中性门的解析器，boot 时注入）。
- * sessionId === 话题 id（dsh-agent-loop 把 session.id 原样放进请求）；
- * 未登记 = undefined = 门透传（不限预算）。lightLlm 等非注册表会话天然 miss。
- */
-export function contextCountForSession(sessionId: string): number | undefined {
-  return topics.get(sessionId)?.contextCount
-}
-
 /** 新建话题：注册表登记 + 建 agent/session。话题已存在时原地更新路由配置（保留 name/createdAt）。 */
 export async function createTopic(ctx: Context, input: KernelTopicInput): Promise<KernelTopic> {
   const now = Date.now()
@@ -780,8 +761,6 @@ export async function createTopic(ctx: Context, input: KernelTopicInput): Promis
       ? { reasoningEffort: existing.reasoningEffort }
       : {}),
     ...(input.reasoningEffort === undefined ? {} : { reasoningEffort: input.reasoningEffort }),
-    ...(existing?.contextCount !== undefined ? { contextCount: existing.contextCount } : {}),
-    ...(input.contextCount === undefined ? {} : { contextCount: input.contextCount }),
     ...(existing?.workingDir !== undefined && existing.workingDir.length > 0
       ? { workingDir: existing.workingDir }
       : {}),
@@ -866,7 +845,6 @@ export async function forkTopic(
     ...(sourceTopic.reasoningEffort === undefined || sourceTopic.reasoningEffort.length === 0
       ? {}
       : { reasoningEffort: sourceTopic.reasoningEffort }),
-    ...(sourceTopic.contextCount === undefined ? {} : { contextCount: sourceTopic.contextCount }),
     ...(sourceTopic.workingDir === undefined ? {} : { workingDir: sourceTopic.workingDir }),
     parentTopicId: sourceTopic.id
   }
@@ -1268,12 +1246,6 @@ export interface TopicSendOptions {
    */
   skills?: SkillTurnEntry[]
   /**
-   * 上下文预算（请求里允许的消息条数上限，助手 contextCount 设置）。
-   * 渲染层随发送上行刷新话题行；请求端由 contextBudget.ts 的中性门消费。
-   * 缺省/undefined = 行上既有值（建册时落位）或无限（不裁剪）。
-   */
-  contextCount?: number
-  /**
    * 文档阅读：本轮 read_document 工具可读的文档清单（触发消息 FILE 附件）。
    * 渲染层随 builtinTools='read_document' 一并上行；缺省/undefined = 本轮无文档
    * 附件，工具执行侧防线拒答（名清单进 RuntimeContextProjection 快照节）。
@@ -1406,7 +1378,6 @@ export async function sendMessage(ctx: Context, id: string, text: string, option
   const topic = topics.get(id)
   if (topic !== undefined) {
     if (options?.reasoningEffort !== undefined) topic.reasoningEffort = options.reasoningEffort
-    if (options?.contextCount !== undefined) topic.contextCount = options.contextCount
     if (externals.length > 0) {
       applyWorkModeTier(agent, options?.tier ?? 'read-only')
     } else {

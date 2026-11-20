@@ -194,7 +194,6 @@ export type AssistantSettings = {
   enableTemperature?: boolean
   topP: number
   enableTopP?: boolean
-  contextCount: number
   streamOutput: boolean
   defaultModel?: Model
   customParameters?: AssistantSettingCustomParameters[]

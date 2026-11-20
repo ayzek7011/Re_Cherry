@@ -16,12 +16,7 @@
  */
 import { loggerService } from '@logger'
 import { nanoid } from '@reduxjs/toolkit'
-import {
-  DEFAULT_CONTEXTCOUNT,
-  DEFAULT_STREAM_OPTIONS_INCLUDE_USAGE,
-  DEFAULT_TEMPERATURE,
-  isMac
-} from '@renderer/config/constant'
+import { DEFAULT_STREAM_OPTIONS_INCLUDE_USAGE, DEFAULT_TEMPERATURE, isMac } from '@renderer/config/constant'
 import { allMinApps } from '@renderer/config/minapps'
 import { isFunctionCallingModel, isNotSupportTextDeltaModel, qwenModel, SYSTEM_MODELS } from '@renderer/config/models'
 import { defaultPreprocessProviders } from '@renderer/config/preprocessProviders'
@@ -1838,7 +1833,6 @@ const migrateConfig = {
         if (!assistant.settings) {
           assistant.settings = {
             temperature: DEFAULT_TEMPERATURE,
-            contextCount: DEFAULT_CONTEXTCOUNT,
             topP: 1,
             toolUseMode: 'prompt',
             customParameters: [],

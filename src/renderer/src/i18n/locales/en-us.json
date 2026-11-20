@@ -248,9 +248,6 @@
         "title": "Clear all messages?"
       },
       "collapse": "Collapse",
-      "context_count": {
-        "tip": "Context / Max Context"
-      },
       "estimated_tokens": {
         "tip": "Estimated tokens"
       },
@@ -441,11 +438,6 @@
         "tip": "Enable preview tools for images rendered from code blocks such as mermaid"
       },
       "code_wrappable": "Code block wrappable",
-      "context_count": {
-        "label": "Context",
-        "tip": "The number of previous messages to keep in the context."
-      },
-      "max": "Unlimited",
       "max_tokens": {
         "confirm": "Set max tokens",
         "confirm_content": "Set the maximum number of tokens the model can generate. Need to consider the context limit of the model, otherwise an error will be reported",

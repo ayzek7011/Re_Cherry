@@ -31,28 +31,41 @@ beforeAll(() => {
  * `clearAllTimers()`：改完参数立刻关弹窗 / 切 tab，界面看着改好了，写入却从未发生；
  * 「重置」也不清挂起的定时器，于是重置后旧值被反写。下面锁住修正后的语义。
  *
- * 用「上下文长度」这个始终渲染的数字框取值：温度 / topP 只在各自开关打开时才渲染。
+ * 用「温度」这组参数取值。开关/输入框的可见性由 `assistant.settings` 派生
+ * （useMemo，不持有本地开关态），mock 的 updateAssistantSettings 不会回灌 props，
+ * 所以直接用「预开启温度、关闭其它数字参数」的夹具，页内只剩温度一个数字框。
  */
 
 const assistant = (settings: Assistant['settings'] = {}): Assistant =>
-  ({ id: 'a1', name: 'A', settings }) as unknown as Assistant
+  ({
+    id: 'a1',
+    name: 'A',
+    settings: {
+      enableTemperature: true,
+      enableTopP: false,
+      enableMaxTokens: false,
+      enableMaxToolCalls: false,
+      ...settings
+    }
+  }) as unknown as Assistant
 
 /**
- * 上下文长度输入框：按「上下文长度」那一行定位。
+ * 页内唯一数字框 = 温度（其余数字参数均被夹具关闭）。
  *
- * 不能用 `aria-valuemax === '100'` 选：同页的 `maxToolCalls` 也是同一个上界，锚点不唯一
- *（`EditableNumber` 改为 `visibility: hidden` 后 a11y 集合的顺序/可见性变化暴露了这一点，
- * 于是本用例曾抓到 `maxToolCalls` 的输入框）。
+ * `EditableNumber` 非编辑态的 `InputNumber` 是 `visibility: hidden`（a11y 集合会把它
+ * 排除掉），所以不能用 getByRole，改从标签定位结构后 querySelector 拿 input；
+ * 随后 `input.focus()` 程序化进入编辑态（focus 不受 visibility/tabIndex 限制）。
  */
-const contextCountInput = () => {
-  const label = screen.getByText(i18n.t('chat.settings.context_count.label'))
-  const row = label.closest('.ant-row') as HTMLElement
+const temperatureInput = () => {
+  const label = screen.getByText(i18n.t('chat.settings.temperature.label'))
+  const settingRow = (label.parentElement?.parentElement ?? label.closest('div')) as HTMLElement
+  const row = settingRow.nextElementSibling as HTMLElement
   return row.querySelector('input') as HTMLInputElement
 }
 
 /** 真实交互序列：先聚焦再输入（`EditableNumber` 以 focus/blur 成对驱动提交），失焦才提交。 */
-const typeContextCount = (value: string) => {
-  const input = contextCountInput()
+const typeTemperature = (value: string) => {
+  const input = temperatureInput()
   input.focus()
   fireEvent.change(input, { target: { value } })
   input.blur()
@@ -65,12 +78,12 @@ describe('采样参数的延迟写入', () => {
       <ChatSettingsSection assistant={assistant()} updateAssistantSettings={updateAssistantSettings} />
     )
 
-    typeContextCount('42')
-    expect(updateAssistantSettings).not.toHaveBeenCalledWith({ contextCount: 42 })
+    typeTemperature('1.5')
+    expect(updateAssistantSettings).not.toHaveBeenCalledWith({ temperature: 1.5 })
 
     unmount()
 
-    expect(updateAssistantSettings).toHaveBeenCalledWith({ contextCount: 42 })
+    expect(updateAssistantSettings).toHaveBeenCalledWith({ temperature: 1.5 })
   })
 
   it('没有挂起写入时不产生多余的采样参数写入', () => {
@@ -82,7 +95,7 @@ describe('采样参数的延迟写入', () => {
     unmount()
 
     expect(updateAssistantSettings).not.toHaveBeenCalledWith(
-      expect.objectContaining({ contextCount: expect.anything() })
+      expect.objectContaining({ temperature: expect.anything() })
     )
   })
 
@@ -92,14 +105,14 @@ describe('采样参数的延迟写入', () => {
       const updateAssistantSettings = vi.fn()
       render(<ChatSettingsSection assistant={assistant()} updateAssistantSettings={updateAssistantSettings} />)
 
-      typeContextCount('7')
+      typeTemperature('1.5')
       fireEvent.click(screen.getByRole('button', { name: /reset|重置/i }))
 
       const callsAfterReset = updateAssistantSettings.mock.calls.length
       vi.advanceTimersByTime(2000)
 
       expect(updateAssistantSettings.mock.calls.length).toBe(callsAfterReset)
-      expect(updateAssistantSettings).not.toHaveBeenCalledWith({ contextCount: 7 })
+      expect(updateAssistantSettings).not.toHaveBeenCalledWith({ temperature: 1.5 })
     } finally {
       vi.useRealTimers()
     }

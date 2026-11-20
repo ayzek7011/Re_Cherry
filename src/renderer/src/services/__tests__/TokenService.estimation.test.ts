@@ -30,10 +30,6 @@ vi.mock('@renderer/utils/messageUtils/find', () => ({
   findFileBlocks: () => filesOf.map((file) => ({ file }))
 }))
 
-vi.mock('@renderer/services/AssistantService', () => ({
-  getAssistantSettings: () => ({ contextCount: 2000 })
-}))
-
 vi.mock('@renderer/services/MessagesService', () => ({
   filterMessages: (messages: Message[]) => messages,
   filterAfterContextClearMessages: (messages: Message[]) => messages

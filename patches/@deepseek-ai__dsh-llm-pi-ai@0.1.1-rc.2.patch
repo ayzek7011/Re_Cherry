@@ -11,12 +11,11 @@ index b819f847403e2bd76a7c04518da4652562a7a791..6cf79345499a585d94545683dda61fc1
  			});
  			content.push({
  				type: "image",
-@@ -1701,6 +1701,8 @@ var PiAiAdapter = class extends LlmAdapter {
+@@ -1701,6 +1701,7 @@ var PiAiAdapter = class extends LlmAdapter {
  		return this.streamWithSnapshot(options, this.current());
  	}
  	async *streamWithSnapshot(options, snapshot) {
 +		options = globalThis.__recTrimPriorTurnThinking?.(options) ?? options;
-+		options = globalThis.__recApplyContextBudget?.(options) ?? options;
  		const env_1 = {
  			stack: [],
  			error: void 0,

@@ -195,7 +195,6 @@ const createAssistant = (overrides: Partial<Assistant> = {}): Assistant => ({
   settings: {
     reasoning_effort: 'none',
     temperature: 0.7,
-    contextCount: 10,
     streamOutput: true,
     toolUseMode: 'function' as const
   },

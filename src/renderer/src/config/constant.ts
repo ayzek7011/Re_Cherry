@@ -1,5 +1,4 @@
 export const DEFAULT_TEMPERATURE = 1.0
-export const DEFAULT_CONTEXTCOUNT = 5
 export const DEFAULT_MAX_TOKENS = 4096
 export const DEFAULT_STREAM_OPTIONS_INCLUDE_USAGE = true
 export const LATEST_PRIVACY_POLICY_VERSION = '20260531'
@@ -56,9 +55,6 @@ export const THEME_COLOR_PRESETS = [
   '#0EA5E9', // Sky Blue
   '#0284C7' // Light Blue
 ]
-
-export const MAX_CONTEXT_COUNT = 100
-export const UNLIMITED_CONTEXT_COUNT = 100000
 
 export const DEFAULT_KNOWLEDGE_DOCUMENT_COUNT = 6
 export const DEFAULT_KNOWLEDGE_THRESHOLD = 0.0

@@ -4,13 +4,7 @@ import EditableNumber from '@renderer/components/EditableNumber'
 import { DeleteIcon, ResetIcon } from '@renderer/components/Icons'
 import { HStack } from '@renderer/components/Layout'
 import Selector from '@renderer/components/Selector'
-import {
-  DEFAULT_CONTEXTCOUNT,
-  DEFAULT_TEMPERATURE,
-  MAX_CONTEXT_COUNT,
-  MAX_TOOL_CALLS,
-  MIN_TOOL_CALLS
-} from '@renderer/config/constant'
+import { DEFAULT_TEMPERATURE, MAX_TOOL_CALLS, MIN_TOOL_CALLS } from '@renderer/config/constant'
 import { useTimer } from '@renderer/hooks/useTimer'
 import { SettingRow } from '@renderer/pages/settings'
 import { DEFAULT_ASSISTANT_SETTINGS } from '@renderer/services/AssistantService'
@@ -31,12 +25,11 @@ interface Props {
 
 /**
  * "聊天设置"采样参数区块 —— 从 AssistantSettings/AssistantModelSettings.tsx 原样搬入
- * （temperature/topP/contextCount/maxTokens/流式输出/工具调用方式/最大工具调用次数/自定义参数 + 重置），
+ * （temperature/topP/maxTokens/流式输出/工具调用方式/最大工具调用次数/自定义参数 + 重置），
  * 仅把默认模型行留在了基础页（搬家不重写）。
  */
 const ChatSettingsSection: FC<Props> = ({ assistant, updateAssistantSettings }) => {
   const [temperature, setTemperature] = useState(assistant?.settings?.temperature ?? DEFAULT_TEMPERATURE)
-  const [contextCount, setContextCount] = useState(assistant?.settings?.contextCount ?? DEFAULT_CONTEXTCOUNT)
   const enableMaxTokens = useMemo(
     () => assistant?.settings?.enableMaxTokens ?? DEFAULT_ASSISTANT_SETTINGS.enableMaxTokens,
     [assistant?.settings?.enableMaxTokens]
@@ -83,7 +76,6 @@ const ChatSettingsSection: FC<Props> = ({ assistant, updateAssistantSettings }) 
   const pendingRef = useRef<{
     temperature?: number
     topP?: number
-    contextCount?: number
     maxTokens?: number
     maxToolCalls?: number
   }>({})
@@ -112,7 +104,6 @@ const ChatSettingsSection: FC<Props> = ({ assistant, updateAssistantSettings }) 
     const flush: Partial<AssistantSettings> = {}
     if (pending.temperature !== undefined) flush.temperature = pending.temperature
     if (pending.topP !== undefined) flush.topP = pending.topP
-    if (pending.contextCount !== undefined) flush.contextCount = pending.contextCount
     if (pending.maxTokens !== undefined) flush.maxTokens = pending.maxTokens
     if (pending.maxToolCalls !== undefined) flush.maxToolCalls = pending.maxToolCalls
     if (Object.keys(flush).length > 0) {
@@ -126,12 +117,6 @@ const ChatSettingsSection: FC<Props> = ({ assistant, updateAssistantSettings }) 
   const onTemperatureChange = (value) => {
     if (!isNaN(value as number)) {
       updateAssistantSettings({ temperature: value })
-    }
-  }
-
-  const onContextCountChange = (value) => {
-    if (!isNaN(value as number)) {
-      updateAssistantSettings({ contextCount: value })
     }
   }
 
@@ -259,7 +244,6 @@ const ChatSettingsSection: FC<Props> = ({ assistant, updateAssistantSettings }) 
     clearAllTimeoutTimers()
     pendingRef.current = {}
     setTemperature(DEFAULT_ASSISTANT_SETTINGS.temperature)
-    setContextCount(DEFAULT_ASSISTANT_SETTINGS.contextCount)
     setMaxTokens(DEFAULT_ASSISTANT_SETTINGS.maxTokens)
     setTopP(DEFAULT_ASSISTANT_SETTINGS.topP)
     setCustomParameters(DEFAULT_ASSISTANT_SETTINGS.customParameters)
@@ -274,11 +258,6 @@ const ChatSettingsSection: FC<Props> = ({ assistant, updateAssistantSettings }) 
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  const formatSliderTooltip = (value?: number) => {
-    if (value === undefined) return ''
-    return value.toString()
-  }
 
   return (
     <Container>
@@ -376,57 +355,6 @@ const ChatSettingsSection: FC<Props> = ({ assistant, updateAssistantSettings }) 
           </Col>
         </Row>
       )}
-      <Divider style={{ margin: '10px 0' }} />
-
-      <Row align="middle">
-        <Col span={20}>
-          <Label>
-            {t('chat.settings.context_count.label')}{' '}
-            <Tooltip title={t('chat.settings.context_count.tip')}>
-              <QuestionIcon />
-            </Tooltip>
-          </Label>
-        </Col>
-        <Col span={4}>
-          <EditableNumber
-            min={0}
-            max={MAX_CONTEXT_COUNT}
-            step={1}
-            value={contextCount}
-            changeOnBlur
-            onChange={(value) => {
-              if (!isNull(value)) {
-                setContextCount(value)
-                scheduleWrite('contextCount', value, 500)
-              }
-            }}
-            formatter={(value) => (value === MAX_CONTEXT_COUNT ? t('chat.settings.max') : (value ?? ''))}
-            style={{ width: '100%' }}
-          />
-        </Col>
-      </Row>
-      <Row align="middle" gutter={24}>
-        <Col span={24}>
-          <ContextSliderWrapper>
-            <Slider
-              min={0}
-              max={MAX_CONTEXT_COUNT}
-              onChange={setContextCount}
-              onChangeComplete={onContextCountChange}
-              value={typeof contextCount === 'number' ? contextCount : 0}
-              marks={{
-                0: '0',
-                25: '25',
-                50: '50',
-                75: '75',
-                100: <span style={{ position: 'absolute', right: -2 }}>{t('chat.settings.max')}</span>
-              }}
-              step={1}
-              tooltip={{ formatter: formatSliderTooltip, open: false }}
-            />
-          </ContextSliderWrapper>
-        </Col>
-      </Row>
       <Divider style={{ margin: '10px 0' }} />
       <SettingRow style={{ minHeight: 30 }}>
         <HStack alignItems="center">
@@ -603,10 +531,6 @@ const QuestionIcon = styled(QuestionCircleOutlined)`
   font-size: 12px;
   cursor: pointer;
   color: var(--color-text-3);
-`
-
-const ContextSliderWrapper = styled.div`
-  padding-bottom: 5px;
 `
 
 export default ChatSettingsSection

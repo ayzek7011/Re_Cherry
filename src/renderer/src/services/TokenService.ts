@@ -2,10 +2,8 @@ import type { Assistant, FileMetadata, Usage } from '@renderer/types'
 import { FILE_TYPE } from '@renderer/types'
 import type { Message } from '@renderer/types/newMessage'
 import { findFileBlocks, getMainTextContent, getThinkingContent } from '@renderer/utils/messageUtils/find'
-import { takeRight } from 'lodash-es'
 import { approximateTokenSize } from 'tokenx'
 
-import { getAssistantSettings } from './AssistantService'
 import { filterAfterContextClearMessages, filterMessages } from './MessagesService'
 
 interface MessageItem {
@@ -170,23 +168,21 @@ export async function estimateMessagesUsage({
 }
 
 /**
- * 历史上下文占用估算（`Messages.tsx` → `ESTIMATED_TOKEN_COUNT`，输入框的上下文百分比）。
+ * 历史上下文占用估算（`Messages.tsx` → `ESTIMATED_TOKEN_COUNT`，输入框的 token 计数）。
  *
  * 旧实现把窗口内**每条**带 usage 消息的 `total_tokens` 直接相加。那是"该条消息
- * 发出时那一刻的累积量"，本身已包含被 `takeRight(maxContextCount)` 截掉的早期消息——
- * 逐条累加等于把历史长度重复计入，上报值会显著高于真实占用。
+ * 发出时那一刻的累积量"，本身已包含更早的历史——逐条累加等于把历史长度重复计入，
+ * 上报值会显著高于真实占用。
  *
  * 现口径（确定性、不依赖窗口外的数据）：
- *   ① 基线 = 窗口内**第一条**带 usage 消息的 `prompt_tokens`（它是一次真实测量，覆盖到它为止的上下文）；
+ *   ① 基线 = 历史**第一条**带 usage 消息的 `prompt_tokens`（它是一次真实测量，覆盖到它为止的上下文）；
  *   ② 该条之后的每条消息，按本地 `estimateMessageParams` 估算增量后相加（含 usage 的也照算，
  * 因为 `completion_tokens` 已按 归零，它的 `prompt_tokens` 只代表走到它的那段，
  *      再计入就会重复）；
- *   ③ 窗口内没有一条带 usage 消息时退化为纯本地估算（与旧实现同构：prompt + 全部消息文本）。
+ *   ③ 历史内没有一条带 usage 消息时退化为纯本地估算（prompt + 全部消息文本）。
  */
 export async function estimateHistoryTokens(assistant: Assistant, msgs: Message[]) {
-  const { contextCount } = getAssistantSettings(assistant)
-  const maxContextCount = contextCount
-  const messages = filterMessages(filterAfterContextClearMessages(takeRight(msgs, maxContextCount)))
+  const messages = filterMessages(filterAfterContextClearMessages(msgs))
 
   // 每条消息压成一段文本（`MessageItem[]` → 按 `\n` 连接），读不出来的记 `null` 表示"无从估算"。
   const bodies = await Promise.all(messages.map((message) => estimateMessageBody(message)))
